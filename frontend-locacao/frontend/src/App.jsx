@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Users, ClipboardList, MapPin, Plus, X, Trash2, Edit2, ChevronLeft, ChevronRight, ExternalLink, Sun, Moon, Maximize, Minimize, Route, LogOut, ShieldCheck, History, FileBarChart, Upload, UserPlus, Check, Tent, Boxes } from 'lucide-react';
+import { Calendar, Users, ClipboardList, MapPin, Plus, X, Trash2, Edit2, ChevronLeft, ChevronRight, ExternalLink, Sun, Moon, Maximize, Minimize, Route, LogOut, ShieldCheck, History, FileBarChart, Upload, UserPlus, Check, Tent, Boxes, Eye, EyeOff } from 'lucide-react';
 import { api, setAuthToken } from './api.js';
 import * as XLSX from 'xlsx';
 import { TEAMS, teamOf, kindLabel, APPT_STATUS } from './constants.js';
@@ -1959,6 +1959,7 @@ function AuthScreen({ onSuccess, theme, onToggleTheme }){
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState('gerente');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -2016,14 +2017,28 @@ function AuthScreen({ onSuccess, theme, onToggleTheme }){
             onChange={e => setEmail(e.target.value)}
             className="bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded px-3 py-2 text-sm"
           />
-          <input
-            placeholder="Senha"
-            type="password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            onKeyDown={e => { if(e.key === 'Enter') submit(); }}
-            className="bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded px-3 py-2 text-sm"
-          />
+          <div className="relative">
+            <input
+              placeholder="Senha"
+              aria-label="Senha"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => { if(e.key === 'Enter') submit(); }}
+              className="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded pl-3 pr-10 py-2 text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(v => !v)}
+              aria-label={showPassword ? 'Esconder senha' : 'Mostrar senha'}
+              title={showPassword ? 'Esconder senha' : 'Mostrar senha'}
+              aria-pressed={showPassword}
+              className="absolute inset-y-0 right-0 px-3 flex items-center text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200"
+            >
+              {showPassword ? <EyeOff size={16}/> : <Eye size={16}/>}
+            </button>
+          </div>
           {mode === 'register' && (
             <div>
               <label className="text-xs font-mono uppercase text-neutral-500 mb-1 block">Cargo</label>
