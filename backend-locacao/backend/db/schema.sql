@@ -216,3 +216,65 @@ CREATE TABLE IF NOT EXISTS vehicles (
   created_at  TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_vehicles_team ON vehicles(team_id);
+
+-- =====================================================================
+-- PAPÉIS, O.S. E ACOMPANHAMENTO EM TEMPO REAL
+-- =====================================================================
+-- users.role agora aceita: admin | gerente | comercial
+
+-- Visitas podem nascer sem equipe: o comercial agenda, o gerente distribui
+ALTER TABLE appointments ALTER COLUMN team_id DROP NOT NULL;
+-- Acompanhamento pelo rastreador
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS arrived_at  TIMESTAMPTZ;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS departed_at TIMESTAMPTZ;
+
+-- Código da ordem de serviço (OS-2026-0001) que acompanha a locação em todas as etapas
+CREATE SEQUENCE IF NOT EXISTS rental_os_seq;
+ALTER TABLE rentals ADD COLUMN IF NOT EXISTS os_code TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rentals_os_code ON rentals(os_code);
+UPDATE rentals SET os_code = 'OS-' || to_char(created_at, 'YYYY') || '-' || lpad(nextval('rental_os_seq')::text, 4, '0')
+ WHERE os_code IS NULL;
+-- Horário combinado com o cliente para a entrega e para a retirada ("08:30")
+ALTER TABLE rentals ADD COLUMN IF NOT EXISTS start_time TEXT;
+ALTER TABLE rentals ADD COLUMN IF NOT EXISTS end_time TEXT;
+
+-- Mensagens automáticas: chegou, concluiu, iniciou, fora de rota, atraso...
+CREATE TABLE IF NOT EXISTS fleet_events (
+  id              TEXT PRIMARY KEY,
+  type            TEXT NOT NULL,  -- chegada | saida_sem_concluir | inicio | conclusao | nao_realizada | fora_de_rota | atraso
+  severity        TEXT NOT NULL DEFAULT 'info',  -- info | sucesso | alerta
+  team_id         TEXT,
+  vehicle_id      TEXT,
+  appointment_id  TEXT REFERENCES appointments(id) ON DELETE SET NULL,
+  message         TEXT NOT NULL,
+  created_at      TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fleet_events_created ON fleet_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_fleet_events_appt ON fleet_events(appointment_id, type);
+
+-- =====================================================================
+-- HISTÓRICO DA O.S. (ações do escritório; o campo vem de fleet_events,
+-- execution_records e asset_movements, juntados na consulta)
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS rental_history (
+  id              TEXT PRIMARY KEY,
+  rental_id       TEXT NOT NULL REFERENCES rentals(id) ON DELETE CASCADE,
+  appointment_id  TEXT REFERENCES appointments(id) ON DELETE SET NULL,
+  type            TEXT NOT NULL,  -- criada | editada | confirmada | cancelada | encerrada | distribuida | remarcada
+  message         TEXT NOT NULL,
+  actor_name      TEXT,
+  actor_role      TEXT,
+  created_at      TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_rental_history_rental ON rental_history(rental_id, created_at);
+
+-- Contador da O.S. por ano: transacional (sem buracos após reinício do banco) e nunca reaproveita número
+CREATE TABLE IF NOT EXISTS os_counter (
+  year  INTEGER PRIMARY KEY,
+  last  INTEGER NOT NULL
+);
+INSERT INTO os_counter (year, last)
+SELECT substring(os_code from 4 for 4)::int, MAX(substring(os_code from 9)::int)
+  FROM rentals WHERE os_code ~ '^OS-\d{4}-\d+$'
+ GROUP BY 1
+ON CONFLICT (year) DO UPDATE SET last = GREATEST(os_counter.last, EXCLUDED.last);

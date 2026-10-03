@@ -6,7 +6,7 @@ import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { pool } from './db.js';
-import { authMiddleware } from './auth.js';
+import { authMiddleware, allowWrite } from './auth.js';
 
 import clientsRouter from './routes/clients.js';
 import taskTypesRouter from './routes/taskTypes.js';
@@ -21,6 +21,8 @@ import productTypesRouter from './routes/productTypes.js';
 import assetsRouter from './routes/assets.js';
 import rentalsRouter from './routes/rentals.js';
 import fleetRouter from './routes/fleet.js';
+import eventsRouter from './routes/events.js';
+import { startTracker } from './services/tracker.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -43,17 +45,18 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 app.use('/api/auth', authRouter);
 app.use('/api/team-app', teamAppRouter);
 
-app.use('/api/clients', authMiddleware, clientsRouter);
-app.use('/api/task-types', authMiddleware, taskTypesRouter);
-app.use('/api/appointments', authMiddleware, appointmentsRouter);
-app.use('/api/team-members', authMiddleware, teamMembersRouter);
-app.use('/api/settings', authMiddleware, settingsRouter);
+app.use('/api/clients', authMiddleware, allowWrite('comercial'), clientsRouter);
+app.use('/api/task-types', authMiddleware, allowWrite('gerente'), taskTypesRouter);
+app.use('/api/appointments', authMiddleware, allowWrite('gerente'), appointmentsRouter);
+app.use('/api/team-members', authMiddleware, allowWrite('gerente'), teamMembersRouter);
+app.use('/api/settings', authMiddleware, allowWrite('gerente'), settingsRouter);
 app.use('/api/audit-log', authMiddleware, auditLogRouter);
-app.use('/api/sites', authMiddleware, sitesRouter);
+app.use('/api/sites', authMiddleware, allowWrite('comercial'), sitesRouter);
 app.use('/api/product-types', authMiddleware, productTypesRouter);
 app.use('/api/assets', authMiddleware, assetsRouter);
-app.use('/api/rentals', authMiddleware, rentalsRouter);
-app.use('/api/fleet', authMiddleware, fleetRouter);
+app.use('/api/rentals', authMiddleware, allowWrite('comercial'), rentalsRouter);
+app.use('/api/fleet', authMiddleware, allowWrite('gerente'), fleetRouter);
+app.use('/api/events', authMiddleware, eventsRouter);
 
 // Tratamento central de erros
 app.use((err, req, res, next) => {
@@ -78,6 +81,7 @@ async function ensureSchema(){
 ensureSchema()
   .then(() => {
     app.listen(PORT, () => console.log(`API rodando na porta ${PORT}`));
+    startTracker(); // acompanhamento automático das equipes (só age se o IOP GPS estiver configurado)
   })
   .catch(err => {
     console.error('Falha ao preparar o banco de dados:', err);

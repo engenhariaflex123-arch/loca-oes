@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { pool } from '../db.js';
-import { signToken, authMiddleware, verifyToken } from '../auth.js';
+import { signToken, authMiddleware, verifyToken, ROLES } from '../auth.js';
 import { logAudit } from '../audit.js';
 
 const router = Router();
@@ -13,7 +13,7 @@ router.post('/register', async (req, res) => {
   if(!name || !email || !password || !role){
     return res.status(400).json({ error: 'Preencha nome, e-mail, senha e cargo.' });
   }
-  if(!['gerente', 'admin'].includes(role)){
+  if(!ROLES.includes(role)){
     return res.status(400).json({ error: 'Cargo inválido.' });
   }
   if(password.length < 6){

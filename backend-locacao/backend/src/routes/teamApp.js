@@ -4,6 +4,8 @@ import { pool } from '../db.js';
 import { signTeamToken, teamAuthMiddleware, authMiddleware } from '../auth.js';
 import { logAudit } from '../audit.js';
 import { uid, today, HttpError, withTransaction } from '../utils.js';
+import { addEvent, describeAppointment, nextAppointment, teamName } from '../services/events.js';
+import { addHistory } from '../services/history.js';
 
 const router = Router();
 
@@ -54,7 +56,7 @@ router.get('/appointments', teamAuthMiddleware, async (req, res) => {
             s.name AS site_name, s.address AS site_address, s.lat AS site_lat, s.lon AS site_lon,
             s.contact_name AS site_contact_name, s.contact_phone AS site_contact_phone,
             s.access_notes AS site_access_notes,
-            r.start_date AS rental_start, r.end_date AS rental_end
+            r.start_date AS rental_start, r.end_date AS rental_end, r.os_code
        FROM appointments a
        LEFT JOIN clients c ON c.id = a.client_id
        LEFT JOIN rentals r ON r.id = a.rental_id
@@ -121,7 +123,7 @@ router.get('/appointments', teamAuthMiddleware, async (req, res) => {
         lon: r.site_lon ?? r.client_lon,
       },
       rental: r.rental_id ? {
-        id: r.rental_id, startDate: r.rental_start, endDate: r.rental_end,
+        id: r.rental_id, osCode: r.os_code, startDate: r.rental_start, endDate: r.rental_end,
         assetsAtSite,
       } : null,
     };
@@ -231,6 +233,9 @@ router.post('/appointments/:id/complete', teamAuthMiddleware, async (req, res) =
         );
         if(o.n === 0){
           await db.query(`UPDATE rentals SET status='encerrado' WHERE id=$1`, [appt.rental_id]);
+          await addHistory(db, { rentalId: appt.rental_id, appointmentId: id, type: 'encerrada',
+            user: { name: teamName(teamId), role: 'team' },
+            message: 'Locação encerrada automaticamente: todas as unidades voltaram.' });
           rentalStatus = 'encerrado';
         }else{
           warnings.push(`${o.n} unidade(s) ainda constam no local. O escritório precisa conferir antes de encerrar a locação.`);
@@ -243,6 +248,18 @@ router.post('/appointments/:id/complete', teamAuthMiddleware, async (req, res) =
 
   await logAudit({ name: `Equipe ${teamId}`, role: 'team' }, 'update', 'appointment', `O.S. concluída — ${id}`,
     result.warnings.length ? { warnings: result.warnings } : null);
+
+  // Mensagem para o escritório: o que foi concluído e qual é a próxima parada
+  try{
+    const { rows: [a] } = await pool.query('SELECT date FROM appointments WHERE id=$1', [id]);
+    const done = await describeAppointment(null, id);
+    const nextId = await nextAppointment(null, teamId, a.date, id);
+    const next = nextId ? `Próxima: ${await describeAppointment(null, nextId)}.` : 'Era a última parada do dia.';
+    await addEvent(null, {
+      type: 'conclusao', severity: 'sucesso', teamId, appointmentId: id,
+      message: `${teamName(teamId)} concluiu ${done}. ${next}${result.warnings.length ? ` (${result.warnings.length} aviso(s))` : ''}`,
+    });
+  }catch(err){ console.error('Falha ao registrar mensagem:', err.message); }
   res.status(201).json({ ok: true, ...result });
 });
 
@@ -258,6 +275,12 @@ router.post('/appointments/:id/fail', teamAuthMiddleware, async (req, res) => {
   if(!r.rowCount) throw new HttpError(404, 'O.S. não encontrada ou já finalizada.');
   await logAudit({ name: `Equipe ${req.team.teamId}`, role: 'team' }, 'update', 'appointment',
     `O.S. não realizada — ${req.params.id}`, { reason });
+  try{
+    await addEvent(null, {
+      type: 'nao_realizada', severity: 'alerta', teamId: req.team.teamId, appointmentId: req.params.id,
+      message: `${teamName(req.team.teamId)} não conseguiu fazer ${await describeAppointment(null, req.params.id)}. Motivo: ${reason}`,
+    });
+  }catch(err){ console.error('Falha ao registrar mensagem:', err.message); }
   res.json({ ok: true });
 });
 
@@ -268,6 +291,12 @@ router.post('/appointments/:id/start', teamAuthMiddleware, async (req, res) => {
     [req.params.id, req.team.teamId]
   );
   if(!r.rowCount) throw new HttpError(404, 'O.S. não encontrada ou já iniciada.');
+  try{
+    await addEvent(null, {
+      type: 'inicio', teamId: req.team.teamId, appointmentId: req.params.id,
+      message: `${teamName(req.team.teamId)} está a caminho: ${await describeAppointment(null, req.params.id)}.`,
+    });
+  }catch(err){ console.error('Falha ao registrar mensagem:', err.message); }
   res.json({ ok: true });
 });
 

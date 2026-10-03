@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, X, Trash2, Edit2, MapPinned, AlertTriangle, Check, Search } from 'lucide-react';
+import QRCode from 'qrcode';
+import { Plus, X, Trash2, Edit2, MapPinned, AlertTriangle, Check, Search, Copy, QrCode, Clock, Building2, Users, Satellite, Image as ImageIcon } from 'lucide-react';
 import { api } from './api.js';
 import {
-  TEAMS, teamOf, kindLabel, CATEGORY_LABEL, RENTAL_STATUS, APPT_STATUS,
+  teamOf, kindLabel, CATEGORY_LABEL, RENTAL_STATUS, APPT_STATUS, ASSET_STATUS,
   fmtBRL, fmtDate, fmtShort, daysInclusive, ui,
 } from './constants.js';
 
@@ -61,7 +62,7 @@ const FILTERS = [
 // ---------------------------------------------------------------------------
 // ABA LOCAÇÕES
 // ---------------------------------------------------------------------------
-export function LocacoesTab({ clients, productTypes, sites, setSites, reloadAppointments }){
+export function LocacoesTab({ clients, productTypes, sites, setSites, reloadAppointments, initialOs, onOsOpened }){
   const [filter, setFilter] = useState('ativas');
   const [rentals, setRentals] = useState(null);
   const [loadError, setLoadError] = useState('');
@@ -83,9 +84,22 @@ export function LocacoesTab({ clients, productTypes, sites, setSites, reloadAppo
 
   const afterChange = async () => { await load(); await reloadAppointments(); };
 
+  // Abrir direto pela O.S. (link do QR code ou busca pelo código)
+  const openByCode = async (code) => {
+    try{
+      const r = await api.rentals.byCode(code);
+      setDetail({ id: r.id });
+      return true;
+    }catch(err){ setLoadError(err.message); return false; }
+  };
+  useEffect(() => {
+    if(initialOs){ openByCode(initialOs); onOsOpened?.(); }
+  }, [initialOs]);
+  const searchIsCode = /^OS-\d{4}-\d+$/i.test(search.trim());
+
   const q = search.trim().toLowerCase();
   const visible = (rentals || []).filter(r =>
-    !q || `${r.clientName} ${r.siteName || ''} ${r.siteAddress || ''} ${itemsSummary(r.items)}`.toLowerCase().includes(q)
+    !q || `${r.osCode || ''} ${r.clientName} ${r.siteName || ''} ${r.siteAddress || ''} ${itemsSummary(r.items)}`.toLowerCase().includes(q)
   );
 
   return (
@@ -114,8 +128,12 @@ export function LocacoesTab({ clients, productTypes, sites, setSites, reloadAppo
       <div className="relative">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"/>
         <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Buscar por cliente, local ou item..."
+          onKeyDown={e => { if(e.key === 'Enter' && searchIsCode) openByCode(search.trim()); }}
+          placeholder="Buscar por O.S. (ex.: OS-2026-0012), cliente, local ou item..."
           className="w-full bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-lg pl-9 pr-3 py-2.5 text-sm" />
+        {searchIsCode && (
+          <button onClick={() => openByCode(search.trim())} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs px-2 py-1 rounded bg-brand-600 text-white">Abrir O.S.</button>
+        )}
       </div>
 
       {loadError && <p className="text-sm text-red-500">{loadError}</p>}
@@ -137,6 +155,7 @@ export function LocacoesTab({ clients, productTypes, sites, setSites, reloadAppo
             className={`${ui.card} text-left px-4 py-3 grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 hover:border-brand-500 transition-colors`}>
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
+                {r.osCode && <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">{r.osCode}</span>}
                 <span className="text-sm font-medium">{r.clientName}</span>
                 {r.siteName && <span className="text-sm text-neutral-500">em {r.siteName}</span>}
               </div>
@@ -145,8 +164,7 @@ export function LocacoesTab({ clients, productTypes, sites, setSites, reloadAppo
             <div className="flex sm:flex-col sm:items-end items-center gap-2 sm:gap-1">
               <StatusBadge meta={RENTAL_STATUS[r.status]} />
               <span className="text-xs font-mono text-neutral-600 dark:text-neutral-400">
-                {fmtShort(r.startDate)} a {fmtShort(r.endDate)}
-                {r.teamId && <span className="inline-block w-2 h-2 rounded-full ml-2 align-middle" style={{ background: teamOf(r.teamId).color }} title={teamOf(r.teamId).name}/>}
+                {fmtShort(r.startDate)}{r.startTime ? ` ${r.startTime}` : ''} a {fmtShort(r.endDate)}{r.endTime ? ` ${r.endTime}` : ''}
               </span>
               <span className="text-xs text-neutral-500">{fmtBRL(r.totalValue)}</span>
             </div>
@@ -193,7 +211,8 @@ function RentalFormModal({ rental, clients, productTypes, sites, setSites, onClo
   const [newSite, setNewSite] = useState(null);
   const [startDate, setStartDate] = useState(rental?.startDate || '');
   const [endDate, setEndDate] = useState(rental?.endDate || '');
-  const [teamId, setTeamId] = useState(rental?.teamId || 'verde');
+  const [startTime, setStartTime] = useState(rental?.startTime || '');
+  const [endTime, setEndTime] = useState(rental?.endTime || '');
   const [items, setItems] = useState(() =>
     rental?.items?.length
       ? rental.items.map(i => ({ productTypeId: i.productTypeId, quantity: i.quantity, unitPrice: i.unitPrice ?? '' }))
@@ -247,7 +266,7 @@ function RentalFormModal({ rental, clients, productTypes, sites, setSites, onClo
         finalSiteId = created.id;
       }
       const payload = {
-        clientId, siteId: finalSiteId, startDate, endDate, teamId, notes,
+        clientId, siteId: finalSiteId, startDate, endDate, startTime: startTime || null, endTime: endTime || null, notes,
         items: validItems.map(i => ({ productTypeId: i.productTypeId, quantity: Number(i.quantity), unitPrice: i.unitPrice })),
         totalValue: totalOverride || undefined,
       };
@@ -310,12 +329,19 @@ function RentalFormModal({ rental, clients, productTypes, sites, setSites, onClo
 
           <div>
             <label className={ui.label} htmlFor="rf-start">Entrega / montagem</label>
-            <input id="rf-start" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className={`${ui.input} w-full`} />
+            <div className="flex gap-2">
+              <input id="rf-start" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className={`${ui.input} flex-1 min-w-0`} />
+              <input type="time" aria-label="Horário combinado para a entrega" value={startTime} onChange={e => setStartTime(e.target.value)} className={`${ui.input} w-28`} />
+            </div>
           </div>
           <div>
             <label className={ui.label} htmlFor="rf-end">Retirada / desmontagem</label>
-            <input id="rf-end" type="date" value={endDate} min={startDate || undefined} onChange={e => setEndDate(e.target.value)} className={`${ui.input} w-full`} />
+            <div className="flex gap-2">
+              <input id="rf-end" type="date" value={endDate} min={startDate || undefined} onChange={e => setEndDate(e.target.value)} className={`${ui.input} flex-1 min-w-0`} />
+              <input type="time" aria-label="Horário combinado para a retirada" value={endTime} onChange={e => setEndTime(e.target.value)} className={`${ui.input} w-28`} />
+            </div>
           </div>
+          <p className="text-xs text-neutral-500 sm:col-span-2 -mt-1 flex items-center gap-1"><Clock size={12}/> Horário combinado com o cliente (opcional). Ele vai para a Agenda e para o app da equipe.</p>
           {startDate && endDate && endDate < startDate && (
             <p className="text-xs text-red-500 sm:col-span-2">A retirada não pode ser antes da entrega.</p>
           )}
@@ -365,20 +391,6 @@ function RentalFormModal({ rental, clients, productTypes, sites, setSites, onClo
           )}
         </div>
 
-        <div>
-          <label className={ui.label}>Equipe responsável</label>
-          <div className="flex gap-2">
-            {TEAMS.map(t => (
-              <button key={t.id} onClick={() => setTeamId(t.id)} aria-pressed={teamId === t.id}
-                className="flex-1 px-3 py-2 rounded text-sm font-medium border-2"
-                style={{ borderColor: teamId === t.id ? t.color : 'transparent', background: t.bg, color: t.text }}>
-                {t.name.replace('Equipe ', '')}
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-neutral-500 mt-1">Todas as visitas geradas vão para essa equipe. Dá para trocar uma a uma na Agenda.</p>
-        </div>
-
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className={ui.label} htmlFor="rf-total">Valor fechado (opcional)</label>
@@ -405,16 +417,16 @@ function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit, onChan
   const [rental, setRental] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [confirmTeam, setConfirmTeam] = useState(null);
   const [shortages, setShortages] = useState(initialShortages?.length ? initialShortages : null);
   const [missing, setMissing] = useState(null);
   const [notice, setNotice] = useState('');
 
+  const [history, setHistory] = useState(null);
   const load = async () => {
     try{
-      const r = await api.rentals.get(rentalId);
+      const [r, h] = await Promise.all([api.rentals.get(rentalId), api.rentals.history(rentalId).catch(() => null)]);
       setRental(r);
-      setConfirmTeam(prev => prev || r.teamId || 'verde');
+      setHistory(h);
     }catch(err){ setError(err.message); }
   };
   useEffect(() => { load(); }, [rentalId]);
@@ -438,10 +450,10 @@ function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit, onChan
   };
 
   const confirm = () => run(async () => {
-    const r = await api.rentals.confirm(rentalId, confirmTeam);
+    const r = await api.rentals.confirm(rentalId);
     setShortages(null);
     return r;
-  }, r => `Locação confirmada. ${r.generatedAppointments} visita(s) criadas na Agenda.`);
+  }, r => `Locação confirmada. ${r.generatedAppointments} visita(s) enviadas para a Agenda; o gerente de logística distribui entre as equipes.`);
 
   const cancel = () => {
     const reason = window.prompt('Motivo do cancelamento (opcional):');
@@ -481,6 +493,7 @@ function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit, onChan
     <Modal size="xl" onClose={onClose}
       title={
         <div className="flex items-center gap-2 flex-wrap">
+          {rental.osCode && <span className="font-mono text-sm px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800">{rental.osCode}</span>}
           <span>{rental.clientName}</span>
           <StatusBadge meta={RENTAL_STATUS[rental.status]} />
         </div>
@@ -517,15 +530,17 @@ function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit, onChan
           </div>
           <div>
             <p className={ui.label}>Período</p>
-            <p>{fmtDate(rental.startDate)} a {fmtDate(rental.endDate)}</p>
+            <p>{fmtDate(rental.startDate)}{rental.startTime ? ` às ${rental.startTime}` : ''} a {fmtDate(rental.endDate)}{rental.endTime ? ` às ${rental.endTime}` : ''}</p>
             <p className="text-xs text-neutral-500">{days} {days === 1 ? 'dia' : 'dias'}</p>
           </div>
           <div>
             <p className={ui.label}>Valor</p>
             <p className="font-medium">{fmtBRL(rental.totalValue)}</p>
-            {rental.teamId && <p className="text-xs text-neutral-500">{teamOf(rental.teamId).name}</p>}
+
           </div>
         </div>
+
+        {history && <StageBar stages={history.stages} />}
 
         <div>
           <p className={ui.label}>Itens</p>
@@ -541,20 +556,10 @@ function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit, onChan
         </div>
 
         {rental.status === 'orcamento' && (
-          <div>
-            <p className={ui.label}>Equipe que vai atender</p>
-            <div className="flex gap-2">
-              {TEAMS.map(t => (
-                <button key={t.id} onClick={() => setConfirmTeam(t.id)} aria-pressed={confirmTeam === t.id}
-                  className="flex-1 px-3 py-2 rounded text-sm font-medium border-2"
-                  style={{ borderColor: confirmTeam === t.id ? t.color : 'transparent', background: t.bg, color: t.text }}>
-                  {t.name.replace('Equipe ', '')}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-neutral-500 mt-1">Ao confirmar, o estoque fica reservado e as visitas de entrega, limpeza e retirada entram na Agenda.</p>
-          </div>
+          <p className="text-xs text-neutral-500">Ao confirmar, o estoque fica reservado e as visitas de entrega, limpeza e retirada vão para a Agenda. O gerente de logística escolhe a equipe de cada uma.</p>
         )}
+
+        {rental.osCode && <OsCodeBox code={rental.osCode} />}
 
         <ShortagesBox shortages={shortages} title={rental.status === 'orcamento' ? 'Falta estoque para confirmar' : undefined} />
 
@@ -588,7 +593,7 @@ function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit, onChan
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ background: team.color }} title={team.name}/>
                       {kindLabel(a.kind)}
                     </span>
-                    <span className="text-xs text-neutral-500 truncate">{a.timeWindow || ''}</span>
+                    <span className="text-xs text-neutral-500 truncate">{[a.timeWindow, a.teamId ? team.name : 'Aguardando equipe'].filter(Boolean).join(' · ')}</span>
                     <StatusBadge meta={APPT_STATUS[a.status] || APPT_STATUS.pendente} />
                   </li>
                 );
@@ -620,8 +625,129 @@ function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit, onChan
             </div>
           </div>
         )}
+
+        {history && <Timeline items={history.items} />}
       </div>
     </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// HISTÓRIA DA O.S.
+// ---------------------------------------------------------------------------
+const brTime = (iso) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+const brDateTime = (iso) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
+const brDay = (iso) => new Date(iso).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Sao_Paulo' });
+
+function StageBar({ stages }){
+  const lastDone = stages.reduce((n, s, i) => (s.at ? i : n), -1);
+  return (
+    <div>
+      <p className={ui.label}>Etapas</p>
+      <ol className="grid gap-1" style={{ gridTemplateColumns: `repeat(${stages.length}, minmax(0, 1fr))` }}>
+        {stages.map((s, i) => {
+          const done = !!s.at;
+          const current = !done && i === lastDone + 1;
+          return (
+            <li key={s.key} className="flex flex-col items-center text-center min-w-0">
+              <div className="flex items-center w-full">
+                <span className={`flex-1 h-0.5 ${i === 0 ? 'opacity-0' : done || current ? 'bg-brand-500' : 'bg-neutral-300 dark:bg-neutral-700'}`} />
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 border-2 ${
+                  done ? 'bg-brand-600 border-brand-600 text-white'
+                  : current ? 'bg-white dark:bg-neutral-900 border-brand-500 text-brand-600'
+                  : 'bg-white dark:bg-neutral-900 border-neutral-300 dark:border-neutral-700 text-neutral-400'}`}>
+                  {done ? <Check size={13} strokeWidth={3}/> : i + 1}
+                </span>
+                <span className={`flex-1 h-0.5 ${i === stages.length - 1 ? 'opacity-0' : done ? 'bg-brand-500' : 'bg-neutral-300 dark:bg-neutral-700'}`} />
+              </div>
+              <p className={`text-xs mt-1 font-medium ${done || current ? '' : 'text-neutral-500'}`}>{s.label}{s.progress ? ` ${s.progress}` : ''}</p>
+              <p className="text-[11px] text-neutral-500 leading-tight">{s.at ? brDateTime(s.at) : s.partial ? 'em parte' : current ? 'próxima' : '—'}</p>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+const SOURCE = {
+  escritorio: { icon: Building2, label: 'Escritório', cls: 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300' },
+  equipe:     { icon: Users,     label: 'Equipe',     cls: 'bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-400' },
+  rastreador: { icon: Satellite, label: 'Rastreador', cls: 'bg-sky-50 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300' },
+};
+const ROLE_NAME = { admin: 'Administrador', gerente: 'Gerente de Logística', comercial: 'Comercial', team: 'App de campo' };
+
+function Timeline({ items }){
+  const [photos, setPhotos] = useState({}); // appointmentId → [dataUrl] | 'loading'
+  const [zoom, setZoom] = useState(null);
+  const loadPhotos = async (apptId) => {
+    setPhotos(p => ({ ...p, [apptId]: 'loading' }));
+    try{
+      const recs = await api.appointments.getExecution(apptId);
+      setPhotos(p => ({ ...p, [apptId]: recs.flatMap(r => r.photos || []) }));
+    }catch(e){ setPhotos(p => ({ ...p, [apptId]: [] })); }
+  };
+  // agrupa por dia
+  const days = [];
+  items.forEach(it => {
+    const key = brDay(it.at);
+    if(!days.length || days[days.length - 1].key !== key) days.push({ key, items: [] });
+    days[days.length - 1].items.push(it);
+  });
+  return (
+    <div>
+      <p className={ui.label}>Histórico completo</p>
+      <div className="flex flex-col gap-4">
+        {days.map(d => (
+          <div key={d.key}>
+            <p className="text-xs font-medium text-neutral-500 capitalize mb-2">{d.key}</p>
+            <ol className="relative border-l-2 border-neutral-200 dark:border-neutral-800 ml-3 flex flex-col gap-3">
+              {d.items.map((it, i) => {
+                const src = SOURCE[it.source] || SOURCE.escritorio;
+                const Icon = src.icon;
+                const alert = it.severity === 'alerta';
+                return (
+                  <li key={i} className="ml-5 relative">
+                    <span className={`absolute -left-[33px] top-0 w-6 h-6 rounded-full flex items-center justify-center ring-4 ring-white dark:ring-neutral-900 ${alert ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' : src.cls}`}>
+                      <Icon size={12}/>
+                    </span>
+                    <p className="text-sm leading-snug">
+                      <span className="font-mono text-xs text-neutral-500 mr-1.5">{brTime(it.at)}</span>
+                      <span className={alert ? 'text-amber-800 dark:text-amber-300' : ''}>{it.message}</span>
+                    </p>
+                    {it.details?.length > 0 && (
+                      <ul className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5 list-disc pl-4">{it.details.map((x, j) => <li key={j}>{x}</li>)}</ul>
+                    )}
+                    {it.notes && <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5 italic">"{it.notes}"</p>}
+                    <p className="text-[11px] text-neutral-500 mt-0.5">
+                      {src.label}{it.actor ? ` · ${it.actor}` : ''}{it.actorRole && ROLE_NAME[it.actorRole] && it.source === 'escritorio' ? ` (${ROLE_NAME[it.actorRole]})` : ''}
+                      {it.photoCount > 0 && !photos[it.appointmentId] && (
+                        <button onClick={() => loadPhotos(it.appointmentId)} className="ml-2 text-brand-600 dark:text-brand-400 hover:underline inline-flex items-center gap-1"><ImageIcon size={11}/> ver {it.photoCount} foto(s)</button>
+                      )}
+                    </p>
+                    {photos[it.appointmentId] === 'loading' && <p className="text-xs text-neutral-500 mt-1">Carregando fotos...</p>}
+                    {Array.isArray(photos[it.appointmentId]) && it.photoCount > 0 && (
+                      <div className="flex gap-1.5 mt-1.5 flex-wrap">
+                        {photos[it.appointmentId].map((p, k) => (
+                          <button key={k} onClick={() => setZoom(p)} aria-label={`Ampliar foto ${k + 1}`}>
+                            <img src={p} alt={`Foto ${k + 1}`} className="w-16 h-16 object-cover rounded border border-neutral-200 dark:border-neutral-700" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        ))}
+      </div>
+      {zoom && (
+        <div className="fixed inset-0 z-[60] bg-black/80 flex items-center justify-center p-4" onClick={() => setZoom(null)}>
+          <img src={zoom} alt="Foto ampliada" className="max-w-full max-h-full rounded" />
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -722,5 +848,172 @@ function SitesModal({ clients, sites, setSites, onClose }){
         </div>
       )}
     </Modal>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CÓDIGO DA O.S. COM QR CODE
+// ---------------------------------------------------------------------------
+export function osLink(code){ return `${window.location.origin}/?os=${encodeURIComponent(code)}`; }
+
+function OsCodeBox({ code }){
+  const [qr, setQr] = useState(null);
+  const [copied, setCopied] = useState('');
+  useEffect(() => {
+    QRCode.toDataURL(osLink(code), { margin: 1, width: 360, errorCorrectionLevel: 'M' }).then(setQr).catch(() => setQr(null));
+  }, [code]);
+  const copy = async (text, what) => {
+    try{ await navigator.clipboard.writeText(text); setCopied(what); setTimeout(() => setCopied(''), 2000); }
+    catch(e){ window.prompt('Copie:', text); }
+  };
+  return (
+    <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 flex gap-4 items-center">
+      {qr ? <img src={qr} alt={`QR code da ${code}`} className="w-28 h-28 rounded bg-white p-1 shrink-0" />
+          : <div className="w-28 h-28 rounded bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0"><QrCode size={28} className="text-neutral-400"/></div>}
+      <div className="min-w-0 flex flex-col gap-2">
+        <div>
+          <p className={ui.label}>Ordem de serviço</p>
+          <p className="text-2xl font-mono font-semibold tracking-tight">{code}</p>
+          <p className="text-xs text-neutral-500">Acompanha a locação em todas as etapas. Quem lê o QR code (logado na plataforma) abre esta O.S.</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => copy(code, 'código')} className={`${ui.secondary} !py-1.5 text-xs flex items-center gap-1`}><Copy size={12}/> {copied === 'código' ? 'Copiado!' : 'Copiar código'}</button>
+          <button onClick={() => copy(osLink(code), 'link')} className={`${ui.secondary} !py-1.5 text-xs flex items-center gap-1`}><Copy size={12}/> {copied === 'link' ? 'Copiado!' : 'Copiar link'}</button>
+          {qr && <a href={qr} download={`${code}.png`} className={`${ui.secondary} !py-1.5 text-xs flex items-center gap-1`}><QrCode size={12}/> Baixar QR</a>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ESTOQUE LIVRE POR DATA (para o comercial responder o cliente)
+// ---------------------------------------------------------------------------
+function todayISO(){ return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date()); }
+function plusDays(key, n){ const d = new Date(key + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); }
+
+export function DisponibilidadePanel(){
+  const [start, setStart] = useState(todayISO);
+  const [end, setEnd] = useState(todayISO);
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState('');
+  const ok = start && end && end >= start;
+
+  useEffect(() => {
+    if(!ok){ setRows(null); return; }
+    let alive = true;
+    setRows(null);
+    api.rentals.availability(start, end)
+      .then(r => { if(alive){ setRows(r); setError(''); } })
+      .catch(err => { if(alive) setError(err.message); });
+    return () => { alive = false; };
+  }, [start, end]);
+
+  // Atalhos de período comuns em pedidos de clientes
+  const today = todayISO();
+  const dow = new Date(today + 'T12:00:00Z').getUTCDay();
+  const sat = plusDays(today, (6 - dow + 7) % 7 || 7);
+  const presets = [
+    { label: 'Hoje', s: today, e: today },
+    { label: 'Amanhã', s: plusDays(today, 1), e: plusDays(today, 1) },
+    { label: 'Próximo fim de semana', s: sat, e: plusDays(sat, 1) },
+    { label: 'Próximos 7 dias', s: today, e: plusDays(today, 6) },
+  ];
+  const byCat = {};
+  (rows || []).forEach(r => { (byCat[r.category] ||= []).push(r); });
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className={`${ui.card} p-4`}>
+        <p className="text-sm font-medium mb-1">Consultar estoque livre</p>
+        <p className="text-xs text-neutral-500 mb-3">Escolha o período que o cliente pediu. "Livres" já desconta o que está reservado, locado e os dias de higienização depois de cada retirada.</p>
+        <div className="flex gap-3 flex-wrap items-end">
+          <div>
+            <label className={ui.label} htmlFor="dp-start">De</label>
+            <input id="dp-start" type="date" value={start} onChange={e => { setStart(e.target.value); if(e.target.value > end) setEnd(e.target.value); }} className={ui.input} />
+          </div>
+          <div>
+            <label className={ui.label} htmlFor="dp-end">Até</label>
+            <input id="dp-end" type="date" value={end} min={start} onChange={e => setEnd(e.target.value)} className={ui.input} />
+          </div>
+          <div className="flex gap-1.5 flex-wrap">
+            {presets.map(p => (
+              <button key={p.label} onClick={() => { setStart(p.s); setEnd(p.e); }}
+                className={`text-xs px-2.5 py-1.5 rounded border ${start === p.s && end === p.e ? 'border-brand-500 bg-brand-50 dark:bg-brand-950 text-brand-700 dark:text-brand-400' : 'border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400'}`}>
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {start && end && end < start && <p className="text-xs text-red-500 mt-2">A data final não pode ser antes da inicial.</p>}
+      </div>
+
+      {error && <p className="text-sm text-red-500">{error}</p>}
+      {ok && !rows && !error && <p className="text-sm text-neutral-500 font-mono">Consultando...</p>}
+      {rows && rows.length === 0 && <p className="text-sm text-neutral-500">Nenhum produto no catálogo ainda.</p>}
+      {rows && Object.entries(byCat).map(([cat, list]) => (
+        <div key={cat} className={`${ui.card} divide-y divide-neutral-200 dark:divide-neutral-800`}>
+          <p className="px-4 py-2 text-xs font-mono uppercase text-neutral-500">{CATEGORY_LABEL[cat] || cat}</p>
+          {list.map(r => {
+            const free = Math.max(r.available, 0);
+            const pct = r.total ? (free / r.total) * 100 : 0;
+            return (
+              <div key={r.productTypeId} className="px-4 py-3 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1.5 items-center">
+                <span className="text-sm font-medium">{r.name}</span>
+                <span className={`text-sm font-semibold ${free === 0 ? 'text-red-600 dark:text-red-400' : free <= Math.ceil(r.total * 0.15) ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'}`}>
+                  {free} livre{free === 1 ? '' : 's'} <span className="text-neutral-500 font-normal">de {r.total}</span>
+                </span>
+                <div className="col-span-2 h-2 rounded-full bg-neutral-200 dark:bg-neutral-800 overflow-hidden" role="img" aria-label={`${free} de ${r.total} livres`}>
+                  <div className="h-full rounded-full" style={{ width: `${pct}%`, background: ASSET_STATUS.disponivel.color }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CARDS DE STATUS (comercial e logística)
+// ---------------------------------------------------------------------------
+export function StatusCards({ appointments, onPick }){
+  const [rentals, setRentals] = useState(null);
+  const [free, setFree] = useState(null);
+  const today = todayISO();
+  useEffect(() => {
+    api.rentals.list({ status: 'orcamento,confirmado,em_andamento' }).then(setRentals).catch(() => setRentals([]));
+    api.rentals.availability(today, today)
+      .then(rows => setFree({ free: rows.reduce((n, r) => n + Math.max(r.available, 0), 0), total: rows.reduce((n, r) => n + r.total, 0) }))
+      .catch(() => {});
+  }, [appointments.length]);
+
+  const todayAppts = appointments.filter(a => a.date === today && a.status !== 'cancelado');
+  const doneToday = todayAppts.filter(a => !['pendente', 'em_rota'].includes(a.status || 'pendente')).length;
+  const unassigned = appointments.filter(a => !a.teamId && a.date >= today && ['pendente', 'em_rota'].includes(a.status || 'pendente')).length;
+  const count = (st) => (rentals || []).filter(r => r.status === st).length;
+
+  const cards = [
+    { id: 'orcamento', label: 'Orçamentos abertos', value: rentals ? count('orcamento') : '…' },
+    { id: 'confirmado', label: 'Confirmadas a entregar', value: rentals ? count('confirmado') : '…' },
+    { id: 'em_andamento', label: 'Em andamento', value: rentals ? count('em_andamento') : '…' },
+    { id: 'hoje', label: 'Visitas hoje', value: `${doneToday}/${todayAppts.length}`, hint: 'feitas' },
+    { id: 'sem_equipe', label: 'Visitas sem equipe', value: unassigned, alert: unassigned > 0 },
+    { id: 'livres', label: 'Unidades livres hoje', value: free ? `${free.free}/${free.total}` : '…' },
+  ];
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+      {cards.map(c => {
+        const Tag = onPick ? 'button' : 'div';
+        return (
+          <Tag key={c.id} onClick={onPick ? () => onPick(c.id) : undefined}
+            className={`${ui.card} px-3 py-2.5 text-left ${onPick ? 'hover:border-brand-500' : ''} ${c.alert ? '!border-amber-400 dark:!border-amber-700 bg-amber-50 dark:bg-amber-950/30' : ''}`}>
+            <p className={`text-xl font-semibold ${c.alert ? 'text-amber-800 dark:text-amber-300' : ''}`}>{c.value}</p>
+            <p className="text-xs text-neutral-500 leading-tight">{c.label}</p>
+          </Tag>
+        );
+      })}
+    </div>
   );
 }

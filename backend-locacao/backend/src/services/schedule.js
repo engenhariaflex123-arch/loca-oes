@@ -50,7 +50,7 @@ export function buildSchedule(rental, items){
 export async function generateAppointments(db, rentalId){
   const { rows: [rental] } = await db.query('SELECT * FROM rentals WHERE id=$1', [rentalId]);
   if(!rental) throw new HttpError(404, 'Locação não encontrada.');
-  if(!rental.team_id) throw new HttpError(400, 'Defina a equipe responsável pela locação.');
+  // team_id pode ser nulo: as visitas ficam "sem equipe" até o gerente distribuir na Agenda
 
   const { rows: items } = await db.query(
     `SELECT ri.product_type_id, ri.quantity, pt.name, pt.category, pt.cleaning_interval_days
@@ -59,6 +59,17 @@ export async function generateAppointments(db, rentalId){
     [rentalId]
   );
 
+  // Guarda a distribuição feita pelo gerente (equipe, ordem na rota, horário ajustado)
+  // para reaplicar nas visitas refeitas: editar a locação não pode desfazer a Agenda.
+  const { rows: previous } = await db.query(
+    `SELECT kind, date, team_id, route_order, time_window FROM appointments
+      WHERE rental_id=$1 AND auto_generated AND status='pendente'`, [rentalId]
+  );
+  const keep = {};
+  for(const p of previous){
+    keep[`${p.kind}|${p.date}`] = p;
+    if(p.team_id && !keep[p.kind]) keep[p.kind] = p; // mesma etapa em outra data
+  }
   await db.query(
     `DELETE FROM appointments WHERE rental_id=$1 AND auto_generated AND status='pendente'`,
     [rentalId]
@@ -82,12 +93,18 @@ export async function generateAppointments(db, rentalId){
   for(const p of buildSchedule(rental, items)){
     if(p.kind === 'limpeza' && (doneCleanings.has(p.date) || p.date < now)) continue;
     if(p.kind !== 'limpeza' && doneKinds.has(p.kind)) continue;
+    // Horário combinado com o cliente: entrega/montagem usa o da entrega; retirada/desmontagem, o da retirada
+    const time = ['entrega', 'montagem'].includes(p.kind) ? rental.start_time
+               : ['retirada', 'desmontagem'].includes(p.kind) ? rental.end_time : null;
+    const same = keep[`${p.kind}|${p.date}`];
+    const similar = same || keep[p.kind];
     await db.query(
       `INSERT INTO appointments
-         (id, date, client_id, team_id, task_ids, notes, status, rental_id, site_id, kind, items, auto_generated)
-       VALUES ($1,$2,$3,$4,$5,$6,'pendente',$7,$8,$9,$10,true)`,
-      [uid(), p.date, rental.client_id, rental.team_id, JSON.stringify(defaultTasks[p.kind] || []),
-       p.notes, rental.id, rental.site_id, p.kind, JSON.stringify(p.items)]
+         (id, date, client_id, team_id, task_ids, notes, status, rental_id, site_id, kind, items, auto_generated, time_window, route_order)
+       VALUES ($1,$2,$3,$4,$5,$6,'pendente',$7,$8,$9,$10,true,$11,$12)`,
+      [uid(), p.date, rental.client_id, similar?.team_id || rental.team_id, JSON.stringify(defaultTasks[p.kind] || []),
+       p.notes, rental.id, rental.site_id, p.kind, JSON.stringify(p.items),
+       time || same?.time_window || null, same?.route_order ?? null]
     );
     created++;
   }

@@ -95,6 +95,8 @@ export const api = {
   rentals: {
     list: (params) => request('/api/rentals' + qs(params)),
     get: (id) => request(`/api/rentals/${id}`),
+    byCode: (code) => request(`/api/rentals/by-code/${encodeURIComponent(code)}`),
+    history: (id) => request(`/api/rentals/${id}/history`),
     availability: (start, end, excludeRentalId) => request('/api/rentals/availability' + qs({ start, end, excludeRentalId })),
     create: (data) => request('/api/rentals', { method: 'POST', body: JSON.stringify(data) }),
     update: (id, data) => request(`/api/rentals/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
@@ -112,5 +114,9 @@ export const api = {
     remove: (id) => request(`/api/fleet/vehicles/${id}`, { method: 'DELETE' }),
     live: () => request('/api/fleet/live'),
     track: (id, date) => request(`/api/fleet/vehicles/${id}/track` + qs({ date })),
+    progress: (date) => request('/api/fleet/progress' + qs({ date })),
+  },
+  events: {
+    list: (params) => request('/api/events' + qs(params)),
   },
 };

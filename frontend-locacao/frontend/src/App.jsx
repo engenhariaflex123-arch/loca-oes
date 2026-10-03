@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Users, ClipboardList, MapPin, Plus, X, Trash2, Edit2, ChevronLeft, ChevronRight, ExternalLink, Sun, Moon, Maximize, Minimize, Route, LogOut, ShieldCheck, History, FileBarChart, Upload, UserPlus, Check, Tent, Boxes, Eye, EyeOff } from 'lucide-react';
+import { Calendar, Users, ClipboardList, MapPin, Plus, X, Trash2, Edit2, ChevronLeft, ChevronRight, ExternalLink, Sun, Moon, Maximize, Minimize, Route, LogOut, ShieldCheck, History, FileBarChart, Upload, UserPlus, Check, Tent, Boxes, Eye, EyeOff, Bell } from 'lucide-react';
 import { api, setAuthToken } from './api.js';
 import * as XLSX from 'xlsx';
-import { TEAMS, teamOf, kindLabel, APPT_STATUS } from './constants.js';
-import { LocacoesTab } from './locacoes.jsx';
+import { TEAMS, teamOf, kindLabel, APPT_STATUS, ROLE_LABEL, ROLE_TABS } from './constants.js';
+import { LocacoesTab, DisponibilidadePanel, StatusCards } from './locacoes.jsx';
 import { EstoqueTab } from './estoque.jsx';
-import { useFleet, useFleetLayer, FleetPanel, VehiclesSection } from './frota.jsx';
+import { useFleet, useFleetLayer, FleetPanel, VehiclesSection, EventsBell, useProgress, TeamProgressPanel, EventsFeed, useProgressLayer } from './frota.jsx';
 
 
 const MONTHS_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -73,6 +73,9 @@ function stopOf(appt, source){
 
 export default function App(){
   const [tab, setTab] = useState('locacoes');
+  const [locSub, setLocSub] = useState('locacoes'); // locacoes | clientes | disponibilidade
+  // Link do QR code: /?os=OS-2026-0012 abre a O.S. direto
+  const [pendingOs, setPendingOs] = useState(() => new URLSearchParams(window.location.search).get('os'));
   const [clients, setClients] = useState([]);
   const [taskTypes, setTaskTypes] = useState([]);
   const [appointments, setAppointments] = useState([]);
@@ -154,14 +157,28 @@ export default function App(){
     try{ setAppointments(await api.appointments.list()); }catch(err){ console.error(err); }
   };
 
+  // Garante uma aba permitida para o papel; abre a O.S. do link quando houver
+  useEffect(() => {
+    if(!user) return;
+    if(pendingOs && canTab('locacoes')){ setTab('locacoes'); setLocSub('locacoes'); }
+    else if(!canTab(tab)) setTab(TABS[0]?.id);
+    if(pendingOs) window.history.replaceState(null, '', window.location.pathname);
+  }, [user?.role]);
+
+  // A logística acompanha o que as equipes fazem em campo: atualiza a agenda a cada minuto
+  useEffect(() => {
+    if(!user || user.role === 'comercial') return;
+    const id = setInterval(reloadAppointments, 60000);
+    return () => clearInterval(id);
+  }, [user?.role]);
+
   SITE_INDEX = Object.fromEntries(sites.map(x => [x.id, x]));
   PRODUCT_INDEX = Object.fromEntries(productTypes.map(x => [x.id, x]));
 
-  const TABS = [
+  const ALL_TABS = [
     { id: 'locacoes', label: 'Locações', icon: Tent },
     { id: 'estoque',  label: 'Estoque',  icon: Boxes },
     { id: 'agenda',   label: 'Agenda',   icon: Calendar },
-    { id: 'clientes', label: 'Clientes', icon: Users },
     { id: 'tarefas',  label: 'Tarefas',  icon: ClipboardList },
     { id: 'equipes',  label: 'Equipes',  icon: Users },
     { id: 'mapa',     label: 'Mapa',     icon: MapPin },
@@ -169,6 +186,10 @@ export default function App(){
     { id: 'auditoria', label: 'Auditoria', icon: History },
     ...(user?.role === 'admin' ? [{ id: 'usuarios', label: 'Usuários', icon: UserPlus }] : []),
   ];
+  // Cada papel vê só as abas do seu trabalho (o servidor também bloqueia as alterações)
+  const allowed = ROLE_TABS[user?.role] ?? (user?.role === 'admin' ? null : ROLE_TABS.gerente);
+  const TABS = allowed ? ALL_TABS.filter(t => allowed.includes(t.id)) : ALL_TABS;
+  const canTab = (id) => TABS.some(t => t.id === id);
 
   if(!authChecked){
     return <div className="w-full min-h-screen flex items-center justify-center bg-neutral-100 dark:bg-neutral-950">
@@ -203,8 +224,9 @@ export default function App(){
         </div>
         <div className="flex items-center gap-3">
           <span className="text-xs font-mono text-neutral-500 flex items-center gap-1.5">
-            <ShieldCheck size={14}/> {user.name} · {user.role === 'admin' ? 'Administrador' : 'Gerente de Logística'}
+            <ShieldCheck size={14}/> {user.name} · {ROLE_LABEL[user.role] || user.role}
           </span>
+          {user.role !== 'comercial' && <EventsBell />}
           <button
             onClick={toggleTheme}
             title={theme === 'dark' ? 'Mudar para modo claro' : 'Mudar para modo escuro'}
@@ -235,16 +257,34 @@ export default function App(){
 
       <div className={tab === 'agenda' ? 'w-full px-5 p-5' : 'max-w-6xl mx-auto p-5'}>
         {tab === 'locacoes' && (
-          <LocacoesTab clients={clients} productTypes={productTypes} sites={sites} setSites={setSites} reloadAppointments={reloadAppointments} />
+          <div className="flex flex-col gap-4">
+            <StatusCards appointments={appointments} />
+            <div className="flex gap-1 border-b border-neutral-200 dark:border-neutral-800" role="tablist">
+              {[['locacoes', 'Locações'], ['clientes', 'Clientes'], ['disponibilidade', 'Estoque livre por data']].map(([id, label]) => (
+                <button key={id} role="tab" aria-selected={locSub === id} onClick={() => setLocSub(id)}
+                  className={`px-3 py-2 text-sm border-b-2 -mb-px ${locSub === id ? 'border-brand-500 text-brand-600 dark:text-brand-400 font-medium' : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {locSub === 'locacoes' && (
+              <LocacoesTab clients={clients} productTypes={productTypes} sites={sites} setSites={setSites} reloadAppointments={reloadAppointments}
+                initialOs={pendingOs} onOsOpened={() => setPendingOs(null)} />
+            )}
+            {locSub === 'clientes' && (
+              <ClientesTab clients={clients} setClients={setClients} appointments={appointments} taskTypes={taskTypes} />
+            )}
+            {locSub === 'disponibilidade' && <DisponibilidadePanel />}
+          </div>
         )}
         {tab === 'estoque' && (
           <EstoqueTab setProductTypes={setProductTypes} />
         )}
         {tab === 'agenda' && (
-          <AgendaTab clients={clients} taskTypes={taskTypes} appointments={appointments} setAppointments={setAppointments} />
-        )}
-        {tab === 'clientes' && (
-          <ClientesTab clients={clients} setClients={setClients} appointments={appointments} taskTypes={taskTypes} />
+          <div className="flex flex-col gap-4">
+            <StatusCards appointments={appointments} />
+            <AgendaTab clients={clients} taskTypes={taskTypes} appointments={appointments} setAppointments={setAppointments} base={base} />
+          </div>
         )}
         {tab === 'tarefas' && (
           <TarefasTab taskTypes={taskTypes} setTaskTypes={setTaskTypes} />
@@ -276,7 +316,7 @@ export default function App(){
 // ---------------------------------------------------------------------------
 // AGENDA
 // ---------------------------------------------------------------------------
-function AgendaTab({ clients, taskTypes, appointments, setAppointments }){
+function AgendaTab({ clients, taskTypes, appointments, setAppointments, base }){
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
   const [month, setMonth] = useState(now.getMonth());
@@ -336,8 +376,14 @@ function AgendaTab({ clients, taskTypes, appointments, setAppointments }){
         {cells.map((d, i) => {
           if(d === null) return <div key={i} className="bg-neutral-100 dark:bg-neutral-950 min-h-[110px]" />;
           const dateKey = fmtDateKey(y, m, d);
-          const dayAppts = apptsByDate[dateKey] || [];
+          const dayAppts = (apptsByDate[dateKey] || []).slice().sort((x, y) => (x.timeWindow || '99').localeCompare(y.timeWindow || '99'));
           const isToday = dateKey === todayKey();
+          // Equipes que passam da jornada nesse dia
+          const overTeams = TEAMS.map(t => {
+            const list = dayAppts.filter(a => a.teamId === t.id && a.status !== 'cancelado');
+            return list.length ? { team: t, load: teamDayLoad(list, clients, taskTypes, base) } : null;
+          }).filter(x => x && x.load.over);
+          const unassigned = dayAppts.filter(a => !a.teamId && ['pendente', 'em_rota', undefined].includes(a.status)).length;
           return (
             <div key={i}
               onDragOver={e => { e.preventDefault(); setDragOverDate(dateKey); }}
@@ -345,7 +391,20 @@ function AgendaTab({ clients, taskTypes, appointments, setAppointments }){
               onDrop={e => { e.preventDefault(); if(draggingId) moveAppointment(draggingId, dateKey); setDragOverDate(null); setDraggingId(null); }}
               className={`bg-white dark:bg-neutral-900 min-h-[110px] p-1.5 flex flex-col gap-1 transition-colors ${dragOverDate === dateKey ? 'ring-2 ring-inset ring-brand-500 bg-brand-50 dark:bg-brand-950/30' : ''}`}>
               <div className="flex items-center justify-between">
-                <span className={`text-xs font-mono ${isToday ? 'text-brand-400 font-semibold' : 'text-neutral-500'}`}>{d}</span>
+                <span className="flex items-center gap-1">
+                  <span className={`text-xs font-mono ${isToday ? 'text-brand-400 font-semibold' : 'text-neutral-500'}`}>{d}</span>
+                  {overTeams.length > 0 && (
+                    <span className="text-[10px] font-semibold px-1 rounded bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300"
+                      title={'Tempo insuficiente: ' + overTeams.map(o => `${o.team.name} ${fmtHM(o.load.total)} de ${fmtHM(o.load.budget)}`).join('; ')}>
+                      ⚠ tempo
+                    </span>
+                  )}
+                  {unassigned > 0 && (
+                    <span className="text-[10px] font-semibold px-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300" title={`${unassigned} visita(s) sem equipe`}>
+                      {unassigned} s/ equipe
+                    </span>
+                  )}
+                </span>
                 <button onClick={() => setModal({ dateKey })} className="text-neutral-500 dark:text-neutral-600 hover:text-brand-400">
                   <Plus size={14} />
                 </button>
@@ -363,12 +422,13 @@ function AgendaTab({ clients, taskTypes, appointments, setAppointments }){
                       draggable
                       onDragStart={e => { setDraggingId(a.id); e.dataTransfer.effectAllowed = 'move'; }}
                       onDragEnd={() => { setDraggingId(null); setDragOverDate(null); }}
-                      className={`text-left text-[11px] leading-tight px-1.5 py-1 rounded truncate flex items-center gap-1 cursor-grab active:cursor-grabbing ${done ? 'opacity-70' : ''} ${draggingId === a.id ? 'opacity-40' : ''}`}
+                      className={`text-left text-[11px] leading-tight px-1.5 py-1 rounded truncate flex items-center gap-1 cursor-grab active:cursor-grabbing ${done ? 'opacity-70' : ''} ${draggingId === a.id ? 'opacity-40' : ''} ${!a.teamId ? 'border border-dashed border-amber-500' : ''}`}
                       style={{ background: team.bg, color: team.text }}
                       title={`${a.rentalId ? kindLabel(a.kind) + ': ' : ''}${label}${done ? ' (concluída)' : failed ? ' (não realizada)' : ''}`}>
                       {done && <Check size={11} className="shrink-0" strokeWidth={3} />}
                       {failed && <X size={11} className="shrink-0 text-red-600" strokeWidth={3} />}
                       <span className={`truncate ${done ? 'line-through' : ''}`}>
+                        {a.timeWindow && <span className="font-mono">{a.timeWindow} </span>}
                         {a.rentalId && <span className="font-semibold">{kindLabel(a.kind)} </span>}
                         {label}
                       </span>
@@ -386,8 +446,22 @@ function AgendaTab({ clients, taskTypes, appointments, setAppointments }){
   const secondMonth = month === 11 ? 0 : month + 1;
   const secondYear = month === 11 ? year + 1 : year;
 
+  const pendingNoTeam = appointments.filter(a => !a.teamId && a.date >= todayKey() && ['pendente', 'em_rota', undefined].includes(a.status));
+  const firstNoTeam = pendingNoTeam.map(a => a.date).sort()[0];
+
   return (
     <div>
+      {pendingNoTeam.length > 0 && (
+        <div className="mb-4 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-sm flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-amber-900 dark:text-amber-200">
+            <b>{pendingNoTeam.length} visita(s) sem equipe</b> vindas das locações confirmadas pelo comercial. Elas aparecem com borda tracejada: clique e escolha a equipe.
+          </p>
+          {firstNoTeam && (
+            <button onClick={() => { const [y, m] = firstNoTeam.split('-').map(Number); setYear(y); setMonth(m - 1); }}
+              className="text-xs px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white font-medium whitespace-nowrap">Ir para a primeira</button>
+          )}
+        </div>
+      )}
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <div className="flex items-center gap-3">
           <button onClick={prevMonth} className="p-1.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400"><ChevronLeft size={18}/></button>
@@ -428,14 +502,14 @@ function AgendaTab({ clients, taskTypes, appointments, setAppointments }){
       )}
 
       {modal && (
-        <AppointmentModal modal={modal} clients={clients} taskTypes={taskTypes} appointments={appointments}
+        <AppointmentModal modal={modal} clients={clients} taskTypes={taskTypes} appointments={appointments} base={base}
           onClose={() => setModal(null)} onSave={saveAppointment} onDelete={deleteAppointment} />
       )}
     </div>
   );
 }
 
-function AppointmentModal({ modal, clients, taskTypes, appointments, onClose, onSave, onDelete }){
+function AppointmentModal({ modal, clients, taskTypes, appointments, base, onClose, onSave, onDelete }){
   const editing = modal.editingId ? appointments.find(a => a.id === modal.editingId) : null;
   const [clientId, setClientId] = useState(editing?.clientId || '');
   const [taskQuantities, setTaskQuantities] = useState(() => {
@@ -443,7 +517,9 @@ function AppointmentModal({ modal, clients, taskTypes, appointments, onClose, on
     normalizeTasks(editing?.taskIds).forEach(({ taskId, quantity }) => { initial[taskId] = quantity; });
     return initial;
   });
-  const [teamId, setTeamId] = useState(editing?.teamId || 'verde');
+  // Visitas criadas pelo comercial chegam sem equipe; o gerente escolhe aqui
+  const [teamId, setTeamId] = useState(editing ? (editing.teamId || null) : 'verde');
+  const [timeWindow, setTimeWindow] = useState(editing?.timeWindow || '');
   const [notes, setNotes] = useState(editing?.notes || '');
   const [execution, setExecution] = useState(null);
   const [execError, setExecError] = useState('');
@@ -468,11 +544,19 @@ function AppointmentModal({ modal, clients, taskTypes, appointments, onClose, on
     const n = Math.max(1, parseInt(value) || 1);
     setTaskQuantities(prev => ({ ...prev, [id]: n }));
   };
+  // Tempo previsto do dia da equipe escolhida, contando com esta visita como está no formulário
+  const taskIdsNow = Object.entries(taskQuantities).map(([taskId, quantity]) => ({ taskId, quantity }));
+  const draft = { ...(editing || {}), id: editing?.id || '__nova__', date: modal.dateKey, clientId, taskIds: taskIdsNow, teamId };
+  const load = teamId ? teamDayLoad(
+    [...appointments.filter(a => a.date === modal.dateKey && a.teamId === teamId && a.id !== editing?.id && a.status !== 'cancelado'), ...(clientId ? [draft] : [])],
+    clients, taskTypes, base
+  ) : null;
+
   const handleSave = () => {
     if(!clientId) return;
-    const taskIds = Object.entries(taskQuantities).map(([taskId, quantity]) => ({ taskId, quantity }));
-    // Mantém os campos da locação (tipo, itens, local, janela) ao salvar
-    onSave({ ...(editing || {}), id: editing?.id, date: modal.dateKey, clientId, taskIds, teamId, notes });
+    if(load?.over && !window.confirm(`Tempo insuficiente para as tarefas: o dia da ${teamOf(teamId).name} ficaria com ${fmtHM(load.total)}, e a jornada é de ${fmtHM(load.budget)}.\n\nSalvar mesmo assim?`)) return;
+    // Mantém os campos da locação (tipo, itens, local) ao salvar
+    onSave({ ...(editing || {}), id: editing?.id, date: modal.dateKey, clientId, taskIds: taskIdsNow, teamId, notes, timeWindow: timeWindow || null });
   };
 
   return (
@@ -547,16 +631,34 @@ function AppointmentModal({ modal, clients, taskTypes, appointments, onClose, on
           </div>
 
           <div>
+            <label className="text-xs font-mono uppercase text-neutral-500 mb-1 block" htmlFor="appt-time">Hora marcada com o cliente</label>
+            <div className="flex items-center gap-2">
+              <input id="appt-time" type="time" value={timeWindow} onChange={e => setTimeWindow(e.target.value)}
+                className="bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded px-3 py-2 text-sm" />
+              {timeWindow && <button onClick={() => setTimeWindow('')} className="text-xs text-neutral-500 underline">sem horário</button>}
+            </div>
+            <p className="text-[11px] text-neutral-500 mt-1">A equipe vê no app e recebe alerta de atraso se não chegar até 15 min depois.</p>
+          </div>
+
+          <div>
             <label className="text-xs font-mono uppercase text-neutral-500 mb-1 block">Equipe</label>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {TEAMS.map(t => (
-                <button key={t.id} onClick={() => setTeamId(t.id)}
+                <button key={t.id} onClick={() => setTeamId(t.id)} aria-pressed={teamId === t.id}
                   className="flex-1 px-3 py-2 rounded text-sm font-medium border-2"
                   style={{ borderColor: teamId === t.id ? t.color : 'transparent', background: t.bg, color: t.text }}>
                   {t.name.replace('Equipe ', '')}
                 </button>
               ))}
             </div>
+            {!teamId && <p className="text-xs text-amber-700 dark:text-amber-400 mt-1.5">Sem equipe ainda. Escolha quem vai atender: só aparece no app de campo depois disso.</p>}
+            {load && (
+              <div className={`mt-2 rounded px-3 py-2 text-xs ${load.over ? 'bg-red-50 dark:bg-red-950/40 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-900' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'}`}>
+                {load.over && <p className="font-semibold">⚠ Tempo insuficiente para as tarefas deste dia</p>}
+                <p>Dia da {teamOf(teamId).name}: <b>{fmtHM(load.total)}</b> de {fmtHM(load.budget)} ({fmtHM(load.task)} de tarefas + {fmtHM(load.travel)} de deslocamento estimado)</p>
+                {load.over && <p>Passa {fmtHM(load.total - load.budget)} da jornada. Mude o dia, a equipe ou divida as tarefas.</p>}
+              </div>
+            )}
           </div>
 
           <div>
@@ -1293,6 +1395,10 @@ function MapaTab({ clients, appointments, taskTypes, base, setBase, setAppointme
   const [fleetTrack, setFleetTrack] = useState(null);
   useEffect(() => { setFleetTrack(null); }, [dateKey, mapMode]);
   const fleetStops = pins.filter(p => p.client.lat && p.client.lon).map(p => [parseFloat(p.client.lat), parseFloat(p.client.lon)]);
+  // Andamento das equipes (rota programada × realizado) e mensagens do dia
+  const progress = useProgress(mapMode === 'day' ? dateKey : null);
+  const [showPlan, setShowPlan] = useState(true);
+  useProgressLayer({ mapRef: mapInstance, ready: leafletReady, progress, enabled: mapMode === 'day' && showPlan });
   const fleetLayer = useFleetLayer({ mapRef: mapInstance, ready: leafletReady, live: fleet.live, track: fleetTrack, vehicles: fleet.vehicles, extraPoints: fleetStops, frameKey: dateKey });
 
   return (
@@ -1477,7 +1583,16 @@ function MapaTab({ clients, appointments, taskTypes, base, setBase, setAppointme
           <div ref={mapRef} style={isFullscreen ? { flex: 1 } : { height: 520 }} />
         </div>
         <div className="flex flex-col gap-4">
+        {mapMode === 'day' && (
+          <label className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400 -mb-2">
+            <input type="checkbox" checked={showPlan} onChange={e => setShowPlan(e.target.checked)} />
+            Mostrar rota programada e andamento no mapa
+          </label>
+        )}
+        <TeamProgressPanel progress={progress} live={fleet.live} isToday={isToday}
+          onFocusStop={(s) => { if(mapInstance.current && Number.isFinite(s.lat)) mapInstance.current.setView([s.lat, s.lon], 16); }} />
         <FleetPanel fleet={fleet} isToday={isToday} dateKey={dateKey} track={fleetTrack} setTrack={setFleetTrack} onFocus={fleetLayer.focus} />
+        <EventsFeed dateKey={dateKey} />
         <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-4">
           <h3 className="text-sm font-medium mb-3">Paradas do dia</h3>
           {pins.length === 0 && <p className="text-sm text-neutral-500">Nenhum agendamento para esta data.</p>}
@@ -1537,6 +1652,30 @@ function haversineKm(a, b){
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 function travelMinutes(a, b){ return (haversineKm(a, b) / AVG_SPEED_KMH) * 60; }
+
+// Tempo previsto do dia de uma equipe: tarefas + deslocamento (saindo da base, sempre para a parada mais próxima)
+function teamDayLoad(appts, clients, taskTypes, base){
+  let task = 0, travel = 0;
+  const pts = [];
+  appts.forEach(a => {
+    task += apptTaskMinutes(a, taskTypes);
+    const c = stopOf(a, clients);
+    const lat = parseFloat(c?.lat), lon = parseFloat(c?.lon);
+    if(Number.isFinite(lat) && Number.isFinite(lon)) pts.push({ lat, lon });
+  });
+  const b = base && Number.isFinite(parseFloat(base.lat)) ? { lat: parseFloat(base.lat), lon: parseFloat(base.lon) } : null;
+  let cur = b || pts[0];
+  const left = b ? [...pts] : pts.slice(1);
+  while(cur && left.length){
+    let bi = 0, bd = Infinity;
+    left.forEach((p, i) => { const d = travelMinutes(cur, p); if(d < bd){ bd = d; bi = i; } });
+    travel += bd; cur = left.splice(bi, 1)[0];
+  }
+  if(b && cur && pts.length) travel += travelMinutes(cur, b); // volta para a base
+  const total = Math.round(task + travel);
+  return { task: Math.round(task), travel: Math.round(travel), total, over: total > WORKDAY_BUDGET_MIN, budget: WORKDAY_BUDGET_MIN };
+}
+function fmtHM(min){ const h = Math.floor(min / 60), m = Math.round(min % 60); return h ? `${h}h${String(m).padStart(2, '0')}` : `${m} min`; }
 
 function apptTaskMinutes(appt, taskTypes){
   let mins = 0;
@@ -2104,6 +2243,13 @@ function AuthScreen({ onSuccess, theme, onToggleTheme }){
                 </button>
                 <button
                   type="button"
+                  onClick={() => setRole('comercial')}
+                  className={`flex-1 px-3 py-2 rounded text-sm border-2 ${role === 'comercial' ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/20' : 'border-neutral-200 dark:border-neutral-700'}`}
+                >
+                  Comercial
+                </button>
+                <button
+                  type="button"
                   onClick={() => setRole('admin')}
                   className={`flex-1 px-3 py-2 rounded text-sm border-2 ${role === 'admin' ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/20' : 'border-neutral-200 dark:border-neutral-700'}`}
                 >
@@ -2189,7 +2335,7 @@ function AuditoriaTab(){
                   {new Date(log.created_at).toLocaleString('pt-BR')}
                 </td>
                 <td className="px-4 py-2">
-                  {log.user_name} <span className="text-neutral-500">({log.user_role === 'admin' ? 'Admin' : 'Gerente'})</span>
+                  {log.user_name} <span className="text-neutral-500">({log.user_role === 'team' ? 'App de campo' : (ROLE_LABEL[log.user_role] || log.user_role || '—')})</span>
                 </td>
                 <td className="px-4 py-2">
                   {ACTION_LABELS[log.action] || log.action} {ENTITY_LABELS[log.entity] || log.entity}
@@ -2723,6 +2869,13 @@ function UsuariosTab(){
             </button>
             <button
               type="button"
+              onClick={() => setRole('comercial')}
+              className={`flex-1 px-3 py-2 rounded text-sm border-2 ${role === 'comercial' ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/20' : 'border-neutral-200 dark:border-neutral-700'}`}
+            >
+              Comercial
+            </button>
+            <button
+              type="button"
               onClick={() => setRole('admin')}
               className={`flex-1 px-3 py-2 rounded text-sm border-2 ${role === 'admin' ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/20' : 'border-neutral-200 dark:border-neutral-700'}`}
             >
@@ -2758,7 +2911,7 @@ function UsuariosTab(){
                 <tr key={u.id} className="border-t border-neutral-100 dark:border-neutral-800">
                   <td className="px-4 py-2">{u.name}</td>
                   <td className="px-4 py-2 text-neutral-500">{u.email}</td>
-                  <td className="px-4 py-2">{u.role === 'admin' ? 'Administrador' : 'Gerente de Logística'}</td>
+                  <td className="px-4 py-2">{ROLE_LABEL[u.role] || u.role}</td>
                   <td className="px-4 py-2 text-neutral-500">{new Date(u.created_at).toLocaleDateString('pt-BR')}</td>
                 </tr>
               ))}

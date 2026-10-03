@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Navigation, Phone, RefreshCw, LogOut, Camera, X, Check, AlertTriangle, Plus, Eye, EyeOff, MapPin, KeyRound } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Navigation, Phone, RefreshCw, LogOut, Camera, Images, X, Check, AlertTriangle, Plus, Eye, EyeOff, MapPin, KeyRound } from 'lucide-react';
 import { campoApi, getSession, saveSession } from './campoApi.js';
 import { compressImage, SignaturePad } from './captura.jsx';
 import { TEAMS, teamOf, kindLabel } from '../constants.js';
@@ -47,6 +47,28 @@ function wazeUrl(stop){
 // Localização para comprovar onde a O.S. foi concluída. Nunca trava o envio:
 // o `timeout` do navegador não conta o tempo esperando a pessoa responder ao pedido
 // de permissão, então há um limite próprio de 8 s; sem resposta, envia sem localização.
+// Rota com várias paradas no Google Maps. No celular o link aceita no máximo 3 paradas
+// intermediárias + o destino, então o dia é dividido em trechos de até 4 paradas,
+// saindo de onde a equipe está (sem "origin" o Maps usa a localização atual).
+const STOPS_PER_LEG = 4;
+function stopPoint(stop){
+  const { lat, lon, address } = stop.location || {};
+  return lat != null && lon != null ? `${lat},${lon}` : (address || '');
+}
+function routeLegs(stops){
+  const usable = stops.filter(s => stopPoint(s));
+  const legs = [];
+  for(let i = 0; i < usable.length; i += STOPS_PER_LEG){
+    const part = usable.slice(i, i + STOPS_PER_LEG);
+    const dest = part[part.length - 1];
+    const mid = part.slice(0, -1).map(stopPoint);
+    const url = `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${encodeURIComponent(stopPoint(dest))}`
+      + (mid.length ? `&waypoints=${encodeURIComponent(mid.join('|'))}` : '');
+    legs.push({ from: i + 1, to: i + part.length, url });
+  }
+  return legs;
+}
+
 function getPosition(){
   return new Promise(resolve => {
     if(!navigator.geolocation) return resolve(null);
@@ -215,6 +237,7 @@ function Dia({ session, onLogout }){
             <p className="text-neutral-500 mt-1">Use as setas para ver outros dias.</p>
           </div>
         )}
+        {todo.length > 0 && <RouteCard stops={todo} />}
         {todo.map((s, i) => <StopCard key={s.id} stop={s} n={i + 1} onOpen={() => open(s.id)} />)}
         {done.length > 0 && (
           <>
@@ -224,6 +247,32 @@ function Dia({ session, onLogout }){
         )}
       </main>
     </div>
+  );
+}
+
+function RouteCard({ stops }){
+  const legs = routeLegs(stops);
+  const next = stops.find(s => stopPoint(s));
+  if(!next) return null;
+  return (
+    <section className="rounded-xl bg-white p-4 shadow-sm">
+      <p className="font-semibold flex items-center gap-2"><Navigation size={18}/> Rota do dia</p>
+      <p className="text-sm text-neutral-600 mb-3">
+        {stops.length} parada(s) a fazer, na ordem da lista. Sai de onde você está agora.
+      </p>
+      <div className="flex flex-col gap-2">
+        {legs.map((l, i) => (
+          <a key={i} href={l.url} target="_blank" rel="noreferrer"
+            className={`${i === 0 ? 'bg-brand-600 active:bg-brand-700 text-white border-brand-600' : 'bg-white text-neutral-900 border-neutral-300'} min-h-[52px] rounded-xl border-2 font-semibold flex items-center justify-center gap-2`}>
+            <Navigation size={18}/> Google Maps: {legs.length === 1 ? (l.to === 1 ? 'próxima parada' : `paradas 1 a ${l.to}`) : `paradas ${l.from} a ${l.to}`}
+          </a>
+        ))}
+        <a href={wazeUrl(next)} target="_blank" rel="noreferrer" className={`${btn.secondary} w-full flex items-center justify-center gap-2`}>
+          <Navigation size={18}/> Waze: próxima parada
+        </a>
+      </div>
+      {legs.length > 1 && <p className="text-xs text-neutral-500 mt-2">O Google Maps no celular aceita até 4 paradas por rota; ao terminar um trecho, abra o próximo.</p>}
+    </section>
   );
 }
 
@@ -241,8 +290,9 @@ function StopCard({ stop, n, onOpen }){
         <span className={`shrink-0 text-sm font-semibold px-2.5 py-1 rounded-full ${st.cls}`}>{st.label}</span>
       </div>
       <p className="font-medium mt-1">{stop.client?.name}{stop.site?.name ? ` · ${stop.site.name}` : ''}</p>
+      {stop.rental?.osCode && <p className="text-xs font-mono text-neutral-500 mt-0.5">{stop.rental.osCode}</p>}
       <p className="text-neutral-600 text-sm mt-0.5 flex items-start gap-1"><MapPin size={14} className="shrink-0 mt-0.5"/>{stop.location?.address || 'Endereço não informado'}</p>
-      {stop.timeWindow && <p className="text-sm font-semibold text-amber-800 mt-1">Horário: {stop.timeWindow}</p>}
+      {stop.timeWindow && <p className="text-sm font-semibold text-amber-800 mt-1">Hora marcada: {stop.timeWindow}</p>}
       {stop.items?.length > 0 && <p className="text-sm text-neutral-700 mt-1">{stop.items.map(i => `${i.quantity}× ${i.name}`).join(', ')}</p>}
     </button>
   );
@@ -310,10 +360,11 @@ function Parada({ stop, team, onBack, onChanged, onExpired }){
         </div>
       )}>
       <section className="rounded-xl bg-white p-4">
+        {stop.rental?.osCode && <p className="text-sm font-mono text-neutral-500">{stop.rental.osCode}</p>}
         <p className="text-xl font-bold">{stop.client?.name}</p>
         {stop.site?.name && <p className="font-medium text-neutral-700">{stop.site.name}</p>}
         <p className="text-neutral-700 mt-1">{stop.location?.address}</p>
-        {stop.timeWindow && <p className="font-semibold text-amber-800 mt-2">Horário combinado: {stop.timeWindow}</p>}
+        {stop.timeWindow && <p className="font-semibold text-amber-800 mt-2">Hora marcada com o cliente: {stop.timeWindow}</p>}
         <div className="grid grid-cols-2 gap-2 mt-4">
           <a href={mapsUrl(stop)} target="_blank" rel="noreferrer" className={`${btn.secondary} flex items-center justify-center gap-2`}><Navigation size={18}/> Google Maps</a>
           <a href={wazeUrl(stop)} target="_blank" rel="noreferrer" className={`${btn.secondary} flex items-center justify-center gap-2`}><Navigation size={18}/> Waze</a>
@@ -604,7 +655,15 @@ function Concluir({ stop, team, onCancel, onDone, onExpired }){
             <label className="aspect-square rounded-lg border-2 border-dashed border-neutral-300 flex flex-col items-center justify-center text-neutral-600 cursor-pointer active:bg-neutral-50">
               <Camera size={28}/>
               <span className="text-sm mt-1">Tirar foto</span>
-              <input type="file" accept="image/*" capture="environment" multiple className="sr-only"
+              <input type="file" accept="image/*" capture="environment" className="sr-only"
+                onChange={e => { addPhotos(e.target.files); e.target.value = ''; }} />
+            </label>
+          )}
+          {photos.length < 6 && (
+            <label className="aspect-square rounded-lg border-2 border-dashed border-neutral-300 flex flex-col items-center justify-center text-neutral-600 cursor-pointer active:bg-neutral-50">
+              <Images size={28}/>
+              <span className="text-sm mt-1 text-center leading-tight">Da galeria</span>
+              <input type="file" accept="image/*" multiple className="sr-only"
                 onChange={e => { addPhotos(e.target.files); e.target.value = ''; }} />
             </label>
           )}

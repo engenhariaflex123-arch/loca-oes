@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { pool } from '../db.js';
 import { logAudit } from '../audit.js';
 import { HttpError } from '../utils.js';
+import { addHistory } from '../services/history.js';
+import { kindLabel, teamName } from '../services/events.js';
 
 const router = Router();
 
@@ -63,6 +65,7 @@ router.post('/', async (req, res) => {
 
 router.put('/:id', async (req, res) => {
   checkEnums(req.body);
+  const { rows: [before] } = await pool.query('SELECT * FROM appointments WHERE id=$1', [req.params.id]);
   const { date, clientId, teamId, taskIds, notes, siteId, kind, timeWindow, routeOrder, items, status } = req.body;
   await pool.query(
     `UPDATE appointments SET date=$1, client_id=$2, team_id=$3, task_ids=$4, notes=$5,
@@ -75,6 +78,25 @@ router.put('/:id', async (req, res) => {
   );
   const { rows } = await pool.query('SELECT name FROM clients WHERE id=$1', [clientId]);
   await logAudit(req.user, 'update', 'appointment', `${date} — ${rows[0]?.name || clientId}`, { teamId });
+
+  // Na O.S.: quem distribuiu para qual equipe, e remarcações de dia ou horário
+  if(before?.rental_id){
+    const what = `${kindLabel(before.kind)} de ${String(before.date).slice(8, 10)}/${String(before.date).slice(5, 7)}`;
+    const newTeam = teamId || null;
+    if((before.team_id || null) !== newTeam){
+      await addHistory(null, { rentalId: before.rental_id, appointmentId: before.id, type: 'distribuida', user: req.user,
+        message: newTeam
+          ? (before.team_id ? `${what}: equipe trocada de ${teamName(before.team_id)} para ${teamName(newTeam)}.` : `${what} distribuída para a ${teamName(newTeam)}.`)
+          : `${what}: retirada da ${teamName(before.team_id)}, aguardando equipe.` });
+    }
+    const changes = [];
+    if(String(before.date) !== String(date)) changes.push(`dia ${String(before.date).slice(8, 10)}/${String(before.date).slice(5, 7)} → ${String(date).slice(8, 10)}/${String(date).slice(5, 7)}`);
+    if((before.time_window || '') !== (req.body.timeWindow || '')) changes.push(`hora marcada ${before.time_window || 'sem horário'} → ${req.body.timeWindow || 'sem horário'}`);
+    if(changes.length){
+      await addHistory(null, { rentalId: before.rental_id, appointmentId: before.id, type: 'remarcada', user: req.user,
+        message: `${what} remarcada: ${changes.join('; ')}.` });
+    }
+  }
   res.json(req.body);
 });
 

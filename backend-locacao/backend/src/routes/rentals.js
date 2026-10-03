@@ -4,9 +4,19 @@ import { logAudit } from '../audit.js';
 import { uid, isDate, diffDays, toNumber, HttpError, withTransaction } from '../utils.js';
 import { getAvailability, findShortages, lockAvailability } from '../services/availability.js';
 import { generateAppointments } from '../services/schedule.js';
+import { addHistory, rentalTimeline } from '../services/history.js';
 
 const router = Router();
 const ACTIVE = ['confirmado', 'em_andamento'];
+
+const dmy = (d) => d ? `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}/${String(d).slice(0, 4)}` : '';
+const itemsText = (list) => list.map(i => `${i.quantity}× ${i.name}`).join(', ');
+async function itemsWithNames(db, items){
+  const { rows } = await db.query('SELECT id, name FROM product_types WHERE id = ANY($1)', [items.map(i => i.productTypeId)]);
+  const name = Object.fromEntries(rows.map(r => [r.id, r.name]));
+  return items.map(i => ({ productTypeId: i.productTypeId, quantity: Number(i.quantity), name: name[i.productTypeId] || 'produto' }));
+}
+
 
 const SELECT = `
   SELECT r.*, c.name AS client_name, s.name AS site_name, s.address AS site_address,
@@ -23,9 +33,10 @@ const SELECT = `
 
 function toRental(r){
   return {
-    id: r.id, clientId: r.client_id, clientName: r.client_name,
+    id: r.id, osCode: r.os_code, clientId: r.client_id, clientName: r.client_name,
     siteId: r.site_id, siteName: r.site_name, siteAddress: r.site_address,
-    startDate: r.start_date, endDate: r.end_date, status: r.status, teamId: r.team_id,
+    startDate: r.start_date, endDate: r.end_date, startTime: r.start_time, endTime: r.end_time,
+    status: r.status, teamId: r.team_id,
     totalValue: r.total_value, notes: r.notes, items: r.items || [], createdAt: r.created_at,
   };
 }
@@ -36,8 +47,14 @@ async function fetchRental(db, id){
   return toRental(rows[0]);
 }
 
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const timeOrNull = (t) => (t && TIME_RE.test(t) ? t : null);
+
 function validate(body){
   const { clientId, startDate, endDate, items } = body;
+  for(const t of [body.startTime, body.endTime]){
+    if(t && !TIME_RE.test(t)) throw new HttpError(400, 'Horário inválido (use HH:MM, ex.: 08:30).');
+  }
   if(!clientId) throw new HttpError(400, 'Selecione o cliente.');
   if(!isDate(startDate) || !isDate(endDate)) throw new HttpError(400, 'Datas inválidas (use AAAA-MM-DD).');
   if(endDate < startDate) throw new HttpError(400, 'A data de retirada não pode ser antes da entrega.');
@@ -95,6 +112,20 @@ router.get('/availability', async (req, res) => {
   res.json(await getAvailability(pool, start, end, excludeRentalId || null));
 });
 
+// --- Achar a locação pelo código da O.S. (QR code, busca)
+router.get('/by-code/:code', async (req, res) => {
+  const { rows: [r] } = await pool.query('SELECT id FROM rentals WHERE upper(os_code)=upper($1)', [req.params.code.trim()]);
+  if(!r) throw new HttpError(404, 'Nenhuma O.S. com esse código.');
+  res.json(await fetchRental(pool, r.id));
+});
+
+// --- História completa da O.S. (etapas + linha do tempo)
+router.get('/:id/history', async (req, res) => {
+  const t = await rentalTimeline(req.params.id);
+  if(!t) throw new HttpError(404, 'Locação não encontrada.');
+  res.json(t);
+});
+
 // --- Detalhe com unidades alocadas e O.S.
 router.get('/:id', async (req, res) => {
   const rental = await fetchRental(pool, req.params.id);
@@ -126,28 +157,38 @@ router.get('/:id', async (req, res) => {
 // --- Criar (sempre nasce como orçamento; não reserva estoque ainda)
 router.post('/', async (req, res) => {
   validate(req.body);
-  const { clientId, siteId, startDate, endDate, items, notes, teamId, totalValue } = req.body;
+  const { clientId, siteId, startDate, endDate, items, notes, teamId, totalValue, startTime, endTime } = req.body;
   const id = req.body.id || uid();
   const rental = await withTransaction(async db => {
+    // Código da O.S. que acompanha a locação em todas as etapas: OS-AAAA-0001.
+    // Contador próprio por ano, na mesma transação: sem buracos e sem reaproveitar número.
+    const year = Number(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric' }).format(new Date()));
+    const { rows: [cnt] } = await db.query(
+      `INSERT INTO os_counter (year, last) VALUES ($1, 1)
+       ON CONFLICT (year) DO UPDATE SET last = os_counter.last + 1 RETURNING last`, [year]);
+    const osCode = `OS-${year}-${String(cnt.last).padStart(4, '0')}`;
     await db.query(
-      `INSERT INTO rentals (id, client_id, site_id, start_date, end_date, status, team_id, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,'orcamento',$6,$7,$8)`,
-      [id, clientId, siteId || null, startDate, endDate, teamId || null, notes || null, req.user.id]
+      `INSERT INTO rentals (id, os_code, client_id, site_id, start_date, end_date, start_time, end_time, status, team_id, notes, created_by)
+       VALUES ($1,$11,$2,$3,$4,$5,$6,$7,'orcamento',$8,$9,$10)`,
+      [id, clientId, siteId || null, startDate, endDate, timeOrNull(startTime), timeOrNull(endTime), teamId || null, notes || null, req.user.id, osCode]
     );
     const computed = await saveItems(db, id, items, startDate, endDate);
     await db.query('UPDATE rentals SET total_value=$1 WHERE id=$2', [toNumber(totalValue) ?? computed, id]);
+    const named = await itemsWithNames(db, items);
+    await addHistory(db, { rentalId: id, type: 'criada', user: req.user,
+      message: `Orçamento criado: ${itemsText(named)}, de ${dmy(startDate)}${startTime ? ` às ${startTime}` : ''} a ${dmy(endDate)}${endTime ? ` às ${endTime}` : ''}.` });
     return fetchRental(db, id);
   });
   // Aviso antecipado: o orçamento é salvo mesmo se faltar estoque
   const shortages = await findShortages(pool, startDate, endDate, items, id);
-  await logAudit(req.user, 'create', 'rental', `${rental.clientName} — ${startDate} a ${endDate}`);
+  await logAudit(req.user, 'create', 'rental', `${rental.osCode} · ${rental.clientName} — ${startDate} a ${endDate}`);
   res.status(201).json({ ...rental, shortages });
 });
 
 // --- Editar. Se já confirmada, revalida estoque e regenera as O.S. pendentes.
 router.put('/:id', async (req, res) => {
   validate(req.body);
-  const { clientId, siteId, startDate, endDate, items, notes, teamId, totalValue } = req.body;
+  const { clientId, siteId, startDate, endDate, items, notes, teamId, totalValue, startTime, endTime } = req.body;
   const { id } = req.params;
   const out = await withTransaction(async db => {
     await lockAvailability(db);
@@ -157,17 +198,34 @@ router.put('/:id', async (req, res) => {
       throw new HttpError(409, 'Locações encerradas ou canceladas não podem ser editadas.');
     }
     const active = ACTIVE.includes(cur.status);
+    const { rows: oldItems } = await db.query(
+      `SELECT ri.product_type_id AS "productTypeId", ri.quantity, pt.name FROM rental_items ri
+         JOIN product_types pt ON pt.id = ri.product_type_id WHERE ri.rental_id=$1`, [id]);
     if(active){
       const shortages = await findShortages(db, startDate, endDate, items, id);
       if(shortages.length) throw new HttpError(409, 'Não há estoque suficiente para essa alteração.', { shortages });
     }
     await db.query(
-      `UPDATE rentals SET client_id=$1, site_id=$2, start_date=$3, end_date=$4, team_id=$5, notes=$6 WHERE id=$7`,
-      [clientId, siteId || null, startDate, endDate, teamId || cur.team_id, notes || null, id]
+      `UPDATE rentals SET client_id=$1, site_id=$2, start_date=$3, end_date=$4, team_id=$5, notes=$6,
+         start_time=$8, end_time=$9 WHERE id=$7`,
+      [clientId, siteId || null, startDate, endDate, teamId || cur.team_id, notes || null, id, timeOrNull(startTime), timeOrNull(endTime)]
     );
     const computed = await saveItems(db, id, items, startDate, endDate);
     await db.query('UPDATE rentals SET total_value=$1 WHERE id=$2', [toNumber(totalValue) ?? computed, id]);
     const generated = active ? await generateAppointments(db, id) : 0;
+    // O que mudou, em palavras
+    const changes = [];
+    if(cur.start_date !== startDate || cur.end_date !== endDate) changes.push(`período de ${dmy(cur.start_date)}–${dmy(cur.end_date)} para ${dmy(startDate)}–${dmy(endDate)}`);
+    if((cur.start_time || '') !== (startTime || '')) changes.push(`horário da entrega ${cur.start_time || 'sem horário'} → ${startTime || 'sem horário'}`);
+    if((cur.end_time || '') !== (endTime || '')) changes.push(`horário da retirada ${cur.end_time || 'sem horário'} → ${endTime || 'sem horário'}`);
+    const named = await itemsWithNames(db, items);
+    const sig = (l) => l.map(i => `${i.productTypeId}:${i.quantity}`).sort().join(',');
+    if(sig(oldItems) !== sig(named)) changes.push(`itens de "${itemsText(oldItems)}" para "${itemsText(named)}"`);
+    if((cur.site_id || null) !== (siteId || null)) changes.push('local de instalação');
+    if(cur.client_id !== clientId) changes.push('cliente');
+    if((cur.notes || '') !== (notes || '')) changes.push('observações');
+    await addHistory(db, { rentalId: id, type: 'editada', user: req.user,
+      message: changes.length ? `Locação alterada: ${changes.join('; ')}.` : 'Locação salva sem alterações relevantes.' });
     return { rental: await fetchRental(db, id), generated };
   });
   await logAudit(req.user, 'update', 'rental', `${out.rental.clientName} — ${startDate} a ${endDate}`);
@@ -182,8 +240,8 @@ router.post('/:id/confirm', async (req, res) => {
     const { rows: [cur] } = await db.query('SELECT * FROM rentals WHERE id=$1 FOR UPDATE', [id]);
     if(!cur) throw new HttpError(404, 'Locação não encontrada.');
     if(cur.status !== 'orcamento') throw new HttpError(409, 'Somente orçamentos podem ser confirmados.');
-    const teamId = req.body.teamId || cur.team_id;
-    if(!teamId) throw new HttpError(400, 'Escolha a equipe responsável.');
+    // A equipe é opcional: o comercial confirma e o gerente de logística distribui na Agenda
+    const teamId = req.body.teamId || cur.team_id || null;
 
     const { rows: items } = await db.query(
       'SELECT product_type_id AS "productTypeId", quantity FROM rental_items WHERE rental_id=$1', [id]
@@ -193,6 +251,8 @@ router.post('/:id/confirm', async (req, res) => {
 
     await db.query(`UPDATE rentals SET status='confirmado', team_id=$2 WHERE id=$1`, [id, teamId]);
     const generated = await generateAppointments(db, id);
+    await addHistory(db, { rentalId: id, type: 'confirmada', user: req.user,
+      message: `Locação confirmada e estoque reservado. ${generated} visita(s) enviada(s) para a Agenda${teamId ? '' : ', aguardando o gerente de logística distribuir'}.` });
     return { rental: await fetchRental(db, id), generated };
   });
   await logAudit(req.user, 'update', 'rental', `Confirmada — ${out.rental.clientName}`, { generated: out.generated });
@@ -211,6 +271,8 @@ router.post('/:id/cancel', async (req, res) => {
     await db.query(`DELETE FROM appointments WHERE rental_id=$1 AND status='pendente'`, [id]);
     await db.query(`UPDATE rentals SET status='cancelado', notes=concat_ws(E'\n', notes, $2::text) WHERE id=$1`,
       [id, req.body.reason ? `Cancelada: ${req.body.reason}` : null]);
+    await addHistory(db, { rentalId: id, type: 'cancelada', user: req.user,
+      message: `Locação cancelada${req.body.reason ? `. Motivo: ${req.body.reason}` : '.'}` });
     return fetchRental(db, id);
   });
   await logAudit(req.user, 'update', 'rental', `Cancelada — ${rental.clientName}`, { reason: req.body.reason });
@@ -253,6 +315,10 @@ router.post('/:id/close', async (req, res) => {
     }
     await db.query(`DELETE FROM appointments WHERE rental_id=$1 AND status='pendente'`, [id]);
     await db.query(`UPDATE rentals SET status='encerrado' WHERE id=$1`, [id]);
+    await addHistory(db, { rentalId: id, type: 'encerrada', user: req.user,
+      message: missing.length
+        ? `Locação encerrada manualmente. ${missing.length} unidade(s) que constavam no local foram marcadas como ${missingAssetsStatus === 'extraviado' ? 'extraviadas' : 'devolvidas (higienização)'}: ${missing.map(m => m.code).join(', ')}.`
+        : 'Locação encerrada manualmente.' });
     return fetchRental(db, id);
   });
   await logAudit(req.user, 'update', 'rental', `Encerrada — ${rental.clientName}`);

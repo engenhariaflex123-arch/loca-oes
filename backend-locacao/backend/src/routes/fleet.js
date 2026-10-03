@@ -3,6 +3,7 @@ import { pool } from '../db.js';
 import { logAudit } from '../audit.js';
 import { uid, HttpError, isDate } from '../utils.js';
 import { isConfigured, liveLocations, listDevices, history, GpsError } from '../services/iopgps.js';
+import { trackerState, dayStops } from '../services/tracker.js';
 
 const router = Router();
 
@@ -107,8 +108,44 @@ router.get('/live', async (req, res) => {
         ...toVehicle(r),
         position: p ? { lat: p.lat, lng: p.lng, speed: p.speed, course: p.course, accOn: p.accOn, gpsTime: p.gpsTime, ageSec } : null,
         state,
+        tracking: trackerState()[r.id] || null, // fora de rota, parada atual/próxima, atrasos
       };
     }),
+  });
+});
+
+// --- Andamento das equipes num dia: paradas na ordem, chegada/saída, atraso
+router.get('/progress', async (req, res) => {
+  const date = req.query.date || new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+  if(!isDate(date)) throw new HttpError(400, 'Data inválida.');
+  const stops = await dayStops(pool, date);
+  const { rows: vehicles } = await pool.query('SELECT id, name, plate, team_id FROM vehicles WHERE active');
+  const isToday = date === new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+  const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+  const nowMin = Number(parts.find(x => x.type === 'hour').value) * 60 + Number(parts.find(x => x.type === 'minute').value);
+  const byTeam = {};
+  for(const s of stops){
+    const key = s.team_id || '';
+    const open = ['pendente', 'em_rota'].includes(s.status);
+    const [h, m] = String(s.time_window || '').split(':').map(Number);
+    const due = Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+    (byTeam[key] ||= []).push({
+      id: s.id, kind: s.kind, status: s.status, timeWindow: s.time_window,
+      arrivedAt: s.arrived_at, departedAt: s.departed_at,
+      clientName: s.client_name, siteName: s.site_name, osCode: s.os_code, address: s.address,
+      lat: s.lat != null ? Number(s.lat) : null, lon: s.lon != null ? Number(s.lon) : null,
+      late: isToday && open && !s.arrived_at && due != null && nowMin > due + 15,
+    });
+  }
+  res.json({
+    date,
+    teams: Object.entries(byTeam).map(([teamId, list]) => ({
+      teamId: teamId || null,
+      vehicles: vehicles.filter(v => v.team_id && v.team_id === teamId).map(v => ({ id: v.id, name: v.name, plate: v.plate })),
+      total: list.length,
+      done: list.filter(s => !['pendente', 'em_rota'].includes(s.status)).length,
+      stops: list,
+    })),
   });
 });
 

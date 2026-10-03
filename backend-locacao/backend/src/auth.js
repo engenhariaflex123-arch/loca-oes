@@ -37,3 +37,16 @@ export function authMiddleware(req, res, next){
 }
 
 export { JWT_SECRET };
+
+// Papéis: admin (tudo) | gerente (logística: agenda, equipes, mapa) | comercial (locações e clientes)
+export const ROLES = ['admin', 'gerente', 'comercial'];
+
+// Libera leitura para todos os usuários logados; escrita só para os papéis listados (admin sempre pode)
+export function allowWrite(...roles){
+  return (req, res, next) => {
+    if(req.method === 'GET') return next();
+    if(req.user?.role === 'admin' || roles.includes(req.user?.role)) return next();
+    const quem = roles.map(r => ({ gerente: 'gerente de logística', comercial: 'equipe comercial' }[r] || r)).join(' ou ');
+    return res.status(403).json({ error: `Só ${quem} ou administrador pode fazer essa alteração.` });
+  };
+}

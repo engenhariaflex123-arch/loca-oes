@@ -5,7 +5,17 @@ export const TEAMS = [
   { id: 'roxo',    name: 'Equipe Roxa',    color: '#7c3aed', bg: '#f3e8ff', text: '#6b21a8' },
 ];
 
-export function teamOf(id){ return TEAMS.find(t => t.id === id) || TEAMS[0]; }
+// Visita ainda sem equipe (o comercial agendou, o gerente de logística ainda não distribuiu)
+export const NO_TEAM = { id: null, name: 'Sem equipe', color: '#737373', bg: '#f5f5f5', text: '#404040' };
+export function teamOf(id){ return (id && TEAMS.find(t => t.id === id)) || NO_TEAM; }
+
+// Papéis e o que cada um vê
+export const ROLE_LABEL = { admin: 'Administrador', gerente: 'Gerente de Logística', comercial: 'Comercial' };
+export const ROLE_TABS = {
+  admin: null, // tudo
+  comercial: ['locacoes', 'estoque'],
+  gerente: ['estoque', 'agenda', 'tarefas', 'equipes', 'mapa', 'relatorios'],
+};
 
 // Tipos de visita gerados pelas locações
 export const KIND_META = {

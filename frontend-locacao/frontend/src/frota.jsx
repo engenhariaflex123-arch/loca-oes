@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Edit2, Trash2, RefreshCw, Route as RouteIcon, X } from 'lucide-react';
+import { Edit2, Trash2, RefreshCw, Route as RouteIcon, X, Bell } from 'lucide-react';
 import { api } from './api.js';
 import { TEAMS, teamOf, ui } from './constants.js';
 import { Modal } from './locacoes.jsx';
@@ -66,6 +66,10 @@ export function useFleetLayer({ mapRef, ready, live, track, vehicles, extraPoint
   const markers = useRef({});
   const framedFor = useRef(null);
 
+  useEffect(() => {
+    if(!live && groups.current){ groups.current.vehicles.clearLayers(); markers.current = {}; }
+  }, [live]);
+
   const ensure = () => {
     const L = window.L, map = mapRef.current;
     if(!L || !map) return null;
@@ -75,31 +79,57 @@ export function useFleetLayer({ mapRef, ready, live, track, vehicles, extraPoint
     return groups.current;
   };
 
+  // Veículos: marcadores persistentes que DESLIZAM até a nova posição (animação),
+  // em vez de sumir e reaparecer a cada atualização.
+  const anim = useRef({});
   useEffect(() => {
     const L = window.L;
     const g = ready && ensure();
     if(!g) return;
-    g.vehicles.clearLayers();
-    markers.current = {};
+    const seen = new Set();
     (live?.vehicles || []).forEach(v => {
       if(!v.position) return;
+      seen.add(v.id);
       const team = v.teamId ? teamOf(v.teamId) : null;
       const color = v.state === 'sem_sinal' ? '#a3a3a3' : (team?.color || '#2a6fbd');
       const meta = STATE_META[v.state] || STATE_META.sem_dados;
-      const icon = L.divIcon({
-        className: '',
-        html: `<div style="display:flex;align-items:center;gap:4px;width:max-content;transform:translate(-11px,-11px)">
-          <div style="flex:none;box-sizing:border-box;width:22px;height:22px;border-radius:6px;background:${color};border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center">
+      const off = v.tracking?.offRoute;
+      const late = v.tracking?.lateIds?.length > 0;
+      const moving = v.state === 'em_movimento';
+      const html = `<div style="display:flex;align-items:center;gap:4px;width:max-content;transform:translate(-11px,-11px)">
+          <div style="position:relative;flex:none;box-sizing:border-box;width:22px;height:22px;border-radius:6px;background:${color};border:3px solid #fff;box-shadow:0 0 0 ${off ? '3px #f59e0b' : '0 transparent'},0 1px 5px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/></svg>
+            ${moving ? '<span style="position:absolute;inset:-7px;border-radius:9px;border:2px solid ' + color + ';opacity:.5;animation:fleetPulse 1.6s ease-out infinite"></span>' : ''}
           </div>
-          <span style="background:#fff;color:#171717;font:600 11px system-ui,sans-serif;padding:1px 5px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,.3);white-space:nowrap">${esc(v.plate || v.name)}</span>
-        </div>`,
-        iconSize: [0, 0],
-      });
-      const m = L.marker([v.position.lat, v.position.lng], { icon, fleet: true, zIndexOffset: 1000 })
-        .bindPopup(`<b>${esc(v.name)}</b>${v.plate ? ` (${esc(v.plate)})` : ''}<br>${esc(meta.label)}${v.position.speed ? `, ${Math.round(v.position.speed)} km/h` : ''}<br><span style="color:#666">Posição ${esc(fmtAge(v.position.ageSec))}${team ? ` · ${esc(team.name)}` : ''}</span>`);
-      m.addTo(g.vehicles);
-      markers.current[v.id] = m;
+          <span style="background:#fff;color:#171717;font:600 11px system-ui,sans-serif;padding:1px 5px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,.3);white-space:nowrap">${esc(v.plate || v.name)}${off ? ' · fora de rota' : late ? ' · atrasado' : ''}</span>
+        </div>`;
+      const icon = L.divIcon({ className: '', html, iconSize: [0, 0] });
+      const popup = `<b>${esc(v.name)}</b>${v.plate ? ` (${esc(v.plate)})` : ''}<br>${esc(meta.label)}${v.position.speed ? `, ${Math.round(v.position.speed)} km/h` : ''}${off ? `<br><b style="color:#b45309">Fora da rota (${v.tracking.offRouteKm} km)</b>` : ''}${late ? '<br><b style="color:#b45309">Atrasado para a próxima parada</b>' : ''}<br><span style="color:#666">Posição ${esc(fmtAge(v.position.ageSec))}${team ? ` · ${esc(team.name)}` : ''}</span>`;
+      const target = L.latLng(v.position.lat, v.position.lng);
+      let m = markers.current[v.id];
+      if(!m){
+        m = L.marker(target, { icon, fleet: true, zIndexOffset: 1000 }).bindPopup(popup).addTo(g.vehicles);
+        markers.current[v.id] = m;
+        return;
+      }
+      m.setIcon(icon);
+      m.setPopupContent(popup);
+      // Desliza da posição atual até a nova em 1,5 s
+      const from = m.getLatLng();
+      if(from.distanceTo(target) < 1) return;
+      cancelAnimationFrame(anim.current[v.id]);
+      const t0 = performance.now(), dur = 1500;
+      const step = (now) => {
+        const k = Math.min(1, (now - t0) / dur);
+        const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; // suaviza início e fim
+        m.setLatLng([from.lat + (target.lat - from.lat) * e, from.lng + (target.lng - from.lng) * e]);
+        if(k < 1) anim.current[v.id] = requestAnimationFrame(step);
+      };
+      anim.current[v.id] = requestAnimationFrame(step);
+    });
+    // Tira do mapa quem não veio mais na atualização
+    Object.keys(markers.current).forEach(id => {
+      if(!seen.has(id)){ g.vehicles.removeLayer(markers.current[id]); delete markers.current[id]; }
     });
     // Na primeira posição recebida (para cada data), enquadra veículos + paradas juntos
     const pts = [
@@ -111,6 +141,15 @@ export function useFleetLayer({ mapRef, ready, live, track, vehicles, extraPoint
       mapRef.current.fitBounds(L.latLngBounds(pts).pad(0.15), { maxZoom: 15 });
     }
   }, [ready, live]);
+
+  // Pulso do veículo em movimento (CSS uma vez só)
+  useEffect(() => {
+    if(document.getElementById('fleet-anim-css')) return;
+    const st = document.createElement('style');
+    st.id = 'fleet-anim-css';
+    st.textContent = '@keyframes fleetPulse{0%{transform:scale(.8);opacity:.6}100%{transform:scale(1.6);opacity:0}}';
+    document.head.appendChild(st);
+  }, []);
 
   useEffect(() => {
     const L = window.L;
@@ -196,6 +235,8 @@ export function FleetPanel({ fleet, isToday, dateKey, track, setTrack, onFocus }
                       {lv?.position && lv.state !== 'em_movimento' && ` ${fmtAge(lv.position.ageSec)}`}
                     </p>
                   )}
+                  {isToday && lv?.tracking?.offRoute && <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mt-0.5">🧭 Fora da rota ({lv.tracking.offRouteKm} km)</p>}
+                  {isToday && lv?.tracking?.lateIds?.length > 0 && <p className="text-xs font-medium text-amber-700 dark:text-amber-400 mt-0.5">⏰ Atrasado para {lv.tracking.lateIds.length} parada(s)</p>}
                 </button>
                 {configured && (
                   <button onClick={() => toggleTrack(v)} aria-pressed={tracking}
@@ -380,4 +421,238 @@ function VehicleModal({ value, configured, onClose, onSaved }){
       </div>
     </Modal>
   );
+}
+
+// ---------------------------------------------------------------------------
+// MENSAGENS DO ACOMPANHAMENTO (sino no topo e painel no Mapa)
+// ---------------------------------------------------------------------------
+const EVENT_META = {
+  chegada:            { icon: '📍', label: 'Chegou' },
+  inicio:             { icon: '🚚', label: 'A caminho' },
+  conclusao:          { icon: '✅', label: 'Concluiu' },
+  nao_realizada:      { icon: '⛔', label: 'Não realizada' },
+  saida_sem_concluir: { icon: '⚠️', label: 'Saiu sem concluir' },
+  fora_de_rota:       { icon: '🧭', label: 'Fora de rota' },
+  atraso:             { icon: '⏰', label: 'Atraso' },
+};
+const SEEN_KEY = 'eventos-vistos-ate';
+
+function timeAgo(iso){
+  const sec = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+  if(sec < 60) return 'agora';
+  if(sec < 3600) return `${Math.round(sec / 60)} min`;
+  return new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+export function useEvents(pollMs = 30000){
+  const [events, setEvents] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    const load = () => api.events.list({ limit: 40 }).then(e => { if(alive) setEvents(e); }).catch(() => {});
+    load();
+    const id = setInterval(load, pollMs);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
+  return events;
+}
+
+export function EventItem({ e, compact }){
+  const meta = EVENT_META[e.type] || { icon: '•', label: e.type };
+  const team = e.teamId ? teamOf(e.teamId) : null;
+  const color = e.severity === 'alerta' ? 'border-l-amber-500' : e.severity === 'sucesso' ? 'border-l-emerald-500' : 'border-l-sky-500';
+  return (
+    <li className={`border-l-4 ${color} pl-2.5 py-1`}>
+      <p className={`${compact ? 'text-xs' : 'text-sm'} leading-snug`}><span aria-hidden="true">{meta.icon} </span>{e.message}</p>
+      <p className="text-[11px] text-neutral-500 mt-0.5 flex items-center gap-1.5">
+        {team && <span className="w-1.5 h-1.5 rounded-full" style={{ background: team.color }}/>}
+        {meta.label} · {timeAgo(e.createdAt)}
+      </p>
+    </li>
+  );
+}
+
+export function EventsBell(){
+  const events = useEvents();
+  const [open, setOpen] = useState(false);
+  const [seenAt, setSeenAt] = useState(() => { try{ return localStorage.getItem(SEEN_KEY) || ''; }catch(e){ return ''; } });
+  const unread = events.filter(e => !seenAt || e.createdAt > seenAt);
+  const alerts = unread.filter(e => e.severity === 'alerta').length;
+  const markSeen = () => {
+    const last = events[0]?.createdAt || new Date().toISOString();
+    setSeenAt(last);
+    try{ localStorage.setItem(SEEN_KEY, last); }catch(e){}
+  };
+  const ref = useRef(null);
+  useEffect(() => {
+    if(!open) return;
+    const close = (ev) => { if(ref.current && !ref.current.contains(ev.target)){ setOpen(false); markSeen(); } };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open, events]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button onClick={() => { if(open) markSeen(); setOpen(o => !o); }}
+        aria-label={`Mensagens das equipes${unread.length ? `, ${unread.length} nova(s)` : ''}`} title="Mensagens das equipes"
+        className="relative p-2 rounded border border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+        <Bell size={16}/>
+        {unread.length > 0 && (
+          <span className={`absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold text-white flex items-center justify-center ${alerts ? 'bg-amber-500' : 'bg-brand-600'}`}>
+            {unread.length > 9 ? '9+' : unread.length}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-11 z-50 w-[22rem] max-w-[90vw] max-h-[70vh] overflow-y-auto bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg shadow-xl p-3">
+          <p className="text-sm font-medium mb-2">Mensagens das equipes</p>
+          {events.length === 0 && <p className="text-sm text-neutral-500">Nenhuma mensagem ainda. Elas aparecem quando as equipes chegam, concluem ou saem da rota.</p>}
+          <ul className="flex flex-col gap-2">
+            {events.map(e => (
+              <div key={e.id} className={!seenAt || e.createdAt > seenAt ? '' : 'opacity-60'}><EventItem e={e} /></div>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ANDAMENTO DAS EQUIPES (aba Mapa)
+// ---------------------------------------------------------------------------
+export function useProgress(dateKey, pollMs = 30000){
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const load = () => api.fleet.progress(dateKey).then(d => { if(alive) setData(d); }).catch(() => {});
+    setData(null); load();
+    const id = setInterval(load, pollMs);
+    return () => { alive = false; clearInterval(id); };
+  }, [dateKey]);
+  return data;
+}
+
+const STOP_STATE = (s) => s.status === 'concluido' ? { label: 'Feita', cls: 'bg-emerald-500 border-emerald-500' }
+  : s.status === 'nao_realizado' ? { label: 'Não realizada', cls: 'bg-red-500 border-red-500' }
+  : s.arrivedAt && !s.departedAt ? { label: 'No local', cls: 'bg-sky-500 border-sky-500 animate-pulse' }
+  : s.late ? { label: 'Atrasada', cls: 'bg-white border-amber-500 border-2' }
+  : { label: 'A fazer', cls: 'bg-white border-neutral-400 border-2' };
+
+export function TeamProgressPanel({ progress, live, isToday, onFocusStop }){
+  if(!progress) return null;
+  const teams = progress.teams.filter(t => t.total > 0);
+  if(teams.length === 0) return null;
+  const liveByTeam = {};
+  (live?.vehicles || []).forEach(v => { if(v.teamId) (liveByTeam[v.teamId] ||= []).push(v); });
+
+  return (
+    <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-4">
+      <h3 className="text-sm font-medium mb-3">Andamento das equipes</h3>
+      <div className="flex flex-col gap-4">
+        {teams.map(t => {
+          const team = teamOf(t.teamId);
+          const pct = Math.round((t.done / t.total) * 100);
+          const current = t.stops.find(s => s.arrivedAt && !s.departedAt && ['pendente', 'em_rota'].includes(s.status));
+          const next = t.stops.find(s => ['pendente', 'em_rota'].includes(s.status) && !s.arrivedAt);
+          const vs = liveByTeam[t.teamId] || [];
+          const offRoute = vs.find(v => v.tracking?.offRoute);
+          const late = t.stops.filter(s => s.late);
+          return (
+            <div key={t.teamId || 'none'}>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ background: team.color }}/>{team.name}
+                </p>
+                <span className="text-xs text-neutral-500">{t.done}/{t.total} feitas</span>
+              </div>
+              <div className="h-1.5 rounded-full bg-neutral-200 dark:bg-neutral-800 mt-1.5 overflow-hidden">
+                <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: team.color }} />
+              </div>
+              {/* Linha do tempo das paradas */}
+              <ol className="flex items-center gap-1 mt-2 flex-wrap" aria-label={`Paradas da ${team.name}`}>
+                {t.stops.map((s, i) => {
+                  const st = STOP_STATE(s);
+                  return (
+                    <li key={s.id} className="flex items-center gap-1">
+                      {i > 0 && <span className="w-2 h-px bg-neutral-300 dark:bg-neutral-700"/>}
+                      <button onClick={() => onFocusStop?.(s)} title={`${i + 1}. ${kindLabelShort(s.kind)} · ${s.clientName || ''}${s.timeWindow ? ` · ${s.timeWindow}` : ''} · ${st.label}`}
+                        className={`w-3.5 h-3.5 rounded-full ${st.cls}`} aria-label={`Parada ${i + 1}: ${st.label}`} />
+                    </li>
+                  );
+                })}
+              </ol>
+              <div className="text-xs mt-1.5 flex flex-col gap-0.5">
+                {!t.teamId && <p className="text-amber-700 dark:text-amber-400">Distribua essas visitas para uma equipe na Agenda.</p>}
+                {current && <p><span className="text-sky-700 dark:text-sky-400 font-medium">No local:</span> {kindLabelShort(current.kind)} · {current.clientName}</p>}
+                {next && <p><span className="text-neutral-500">Próxima:</span> {kindLabelShort(next.kind)} · {next.clientName}{next.timeWindow ? ` às ${next.timeWindow}` : ''}</p>}
+                {isToday && offRoute && <p className="text-amber-700 dark:text-amber-400 font-medium">🧭 {offRoute.name} fora da rota ({offRoute.tracking.offRouteKm} km do trajeto)</p>}
+                {isToday && late.length > 0 && <p className="text-amber-700 dark:text-amber-400 font-medium">⏰ Atrasada para {late.length} parada(s)</p>}
+                {t.done === t.total && <p className="text-emerald-700 dark:text-emerald-400 font-medium">Todas as paradas finalizadas.</p>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+const KIND_SHORT = { entrega: 'Entrega', montagem: 'Montagem', limpeza: 'Limpeza', retirada: 'Retirada', desmontagem: 'Desmontagem', manutencao: 'Manutenção', vistoria: 'Vistoria' };
+function kindLabelShort(k){ return KIND_SHORT[k] || 'Visita'; }
+
+export function EventsFeed({ dateKey }){
+  const events = useEvents();
+  const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+  if(dateKey !== today) return null;
+  const list = events.filter(e => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(e.createdAt)) === today).slice(0, 12);
+  return (
+    <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-4">
+      <h3 className="text-sm font-medium mb-2">Mensagens de hoje</h3>
+      {list.length === 0
+        ? <p className="text-xs text-neutral-500">Nenhuma ainda. Aparecem quando as equipes chegam aos locais, concluem tarefas, saem da rota ou se atrasam.</p>
+        : <ul className="flex flex-col gap-2">{list.map(e => <EventItem key={e.id} e={e} compact />)}</ul>}
+    </div>
+  );
+}
+
+// Rota programada de cada equipe: linha contínua no que já foi feito, tracejada no que falta,
+// e cada parada marcada pelo andamento (feita, no local, atrasada, a fazer).
+export function useProgressLayer({ mapRef, ready, progress, enabled }){
+  const group = useRef(null);
+  useEffect(() => {
+    const L = window.L, map = mapRef.current;
+    if(!ready || !L || !map) return;
+    if(!group.current) group.current = L.layerGroup().addTo(map);
+    const g = group.current;
+    g.clearLayers();
+    if(!enabled || !progress) return;
+    progress.teams.forEach(t => {
+      if(!t.teamId) return;
+      const team = teamOf(t.teamId);
+      const pts = t.stops.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon));
+      if(pts.length === 0) return;
+      // Até onde a equipe já chegou (última parada finalizada ou com chegada registrada)
+      let reached = -1;
+      pts.forEach((s, i) => { if(!['pendente', 'em_rota'].includes(s.status) || s.arrivedAt) reached = i; });
+      const latlngs = pts.map(s => [s.lat, s.lon]);
+      if(reached > 0) L.polyline(latlngs.slice(0, reached + 1), { color: team.color, weight: 5, opacity: 0.9, fleet: true }).addTo(g);
+      if(reached < latlngs.length - 1) L.polyline(latlngs.slice(Math.max(reached, 0)), { color: team.color, weight: 3, opacity: 0.7, dashArray: '8,8', fleet: true }).addTo(g);
+      pts.forEach((s, i) => {
+        const done = s.status === 'concluido', failed = s.status === 'nao_realizado';
+        const here = s.arrivedAt && !s.departedAt && !done && !failed;
+        const bg = done ? team.color : failed ? '#dc2626' : '#fff';
+        const fg = done || failed ? '#fff' : team.color;
+        const ring = here ? `box-shadow:0 0 0 4px ${team.color}55;` : s.late ? 'box-shadow:0 0 0 3px #f59e0b;' : '';
+        const icon = L.divIcon({
+          className: '',
+          html: `<div style="transform:translate(-11px,-11px);width:22px;height:22px;border-radius:50%;background:${bg};border:2.5px solid ${failed ? '#dc2626' : team.color};${ring}color:${fg};font:700 11px system-ui,sans-serif;display:flex;align-items:center;justify-content:center">${done ? '✓' : failed ? '✕' : i + 1}</div>`,
+          iconSize: [0, 0],
+        });
+        const st = done ? 'Feita' : failed ? 'Não realizada' : here ? 'Equipe no local' : s.late ? 'Atrasada' : 'A fazer';
+        L.marker([s.lat, s.lon], { icon, fleet: true, zIndexOffset: 500 })
+          .bindPopup(`<b>${i + 1}. ${esc(kindLabelShort(s.kind))}</b>${s.osCode ? ` · ${esc(s.osCode)}` : ''}<br>${esc(s.clientName || '')}${s.siteName ? ` (${esc(s.siteName)})` : ''}${s.timeWindow ? `<br>Horário combinado: ${esc(s.timeWindow)}` : ''}<br><b>${st}</b>${s.arrivedAt ? `<br><span style="color:#666">Chegou ${new Date(s.arrivedAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>` : ''}<br><span style="color:#666">${esc(team.name)}</span>`)
+          .addTo(g);
+      });
+    });
+  }, [ready, progress, enabled]);
 }
