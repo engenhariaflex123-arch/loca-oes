@@ -103,4 +103,14 @@ export const api = {
     close: (id, missingAssetsStatus) => request(`/api/rentals/${id}/close`, { method: 'POST', body: JSON.stringify({ missingAssetsStatus }) }),
     remove: (id) => request(`/api/rentals/${id}`, { method: 'DELETE' }),
   },
+  fleet: {
+    status: () => request('/api/fleet/status'),
+    devices: () => request('/api/fleet/devices'),
+    vehicles: () => request('/api/fleet/vehicles'),
+    create: (data) => request('/api/fleet/vehicles', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id, data) => request(`/api/fleet/vehicles/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    remove: (id) => request(`/api/fleet/vehicles/${id}`, { method: 'DELETE' }),
+    live: () => request('/api/fleet/live'),
+    track: (id, date) => request(`/api/fleet/vehicles/${id}/track` + qs({ date })),
+  },
 };

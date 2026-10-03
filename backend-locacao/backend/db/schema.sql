@@ -201,3 +201,18 @@ CREATE INDEX IF NOT EXISTS idx_assets_type_status    ON assets(product_type_id, 
 CREATE INDEX IF NOT EXISTS idx_appointments_rental   ON appointments(rental_id);
 CREATE INDEX IF NOT EXISTS idx_appointments_team_day ON appointments(team_id, date);
 CREATE INDEX IF NOT EXISTS idx_movements_asset       ON asset_movements(asset_id, created_at DESC);
+
+-- =====================================================================
+-- FROTA (rastreadores no IOP GPS)
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS vehicles (
+  id          TEXT PRIMARY KEY,
+  name        TEXT NOT NULL,          -- "Caminhão sucção 1", "Saveiro"
+  plate       TEXT,                   -- placa
+  imei        TEXT UNIQUE NOT NULL,   -- IMEI do rastreador (o mesmo cadastrado no IOP GPS)
+  team_id     TEXT,                   -- equipe que usa o veículo normalmente
+  active      BOOLEAN DEFAULT true,
+  notes       TEXT,
+  created_at  TIMESTAMPTZ DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_vehicles_team ON vehicles(team_id);

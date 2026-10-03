@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Users, ClipboardList, MapPin, Plus, X, Trash2, Edit2, ChevronLeft, ChevronRight, ExternalLink, Sun, Moon, Maximize, Minimize, Route, LogOut, ShieldCheck, History, FileBarChart, Upload, UserPlus, Check, Tent, Boxes, Eye, EyeOff } from 'lucide-react';
+import { Calendar, Users, ClipboardList, MapPin, Plus, X, Trash2, Edit2, ChevronLeft, ChevronRight, ExternalLink, Sun, Moon, Maximize, Minimize, Route, LogOut, ShieldCheck, History, FileBarChart, Upload, UserPlus, Check, Tent, Boxes, Eye, EyeOff, Truck } from 'lucide-react';
 import { api, setAuthToken } from './api.js';
 import * as XLSX from 'xlsx';
 import { TEAMS, teamOf, kindLabel, APPT_STATUS } from './constants.js';
 import { LocacoesTab } from './locacoes.jsx';
 import { EstoqueTab } from './estoque.jsx';
+import { FrotaTab } from './frota.jsx';
 
 
 const MONTHS_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -164,6 +165,7 @@ export default function App(){
     { id: 'tarefas',  label: 'Tarefas',  icon: ClipboardList },
     { id: 'equipes',  label: 'Equipes',  icon: Users },
     { id: 'mapa',     label: 'Mapa',     icon: MapPin },
+    { id: 'frota',    label: 'Frota',    icon: Truck },
     { id: 'relatorios', label: 'Relatórios', icon: FileBarChart },
     { id: 'auditoria', label: 'Auditoria', icon: History },
     ...(user?.role === 'admin' ? [{ id: 'usuarios', label: 'Usuários', icon: UserPlus }] : []),
@@ -253,6 +255,9 @@ export default function App(){
         )}
         {tab === 'mapa' && (
           <MapaTab clients={clients} appointments={appointments} taskTypes={taskTypes} base={base} setBase={updateBase} setAppointments={setAppointments} />
+        )}
+        {tab === 'frota' && (
+          <FrotaTab appointments={appointments} clients={clients} sites={sites} />
         )}
         {tab === 'relatorios' && (
           <RelatoriosTab clients={clients} appointments={appointments} taskTypes={taskTypes} base={base} />
@@ -2093,7 +2098,7 @@ const ACTION_LABELS = {
 const ENTITY_LABELS = {
   client: 'cliente', task_type: 'tarefa', appointment: 'agendamento',
   team_member: 'integrante de equipe', settings: 'configuração', auth: 'conta',
-  rental: 'locação', asset: 'unidade', product_type: 'produto', site: 'local',
+  rental: 'locação', asset: 'unidade', product_type: 'produto', site: 'local', vehicle: 'veículo',
 };
 
 function AuditoriaTab(){

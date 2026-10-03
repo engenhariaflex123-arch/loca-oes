@@ -20,6 +20,7 @@ import sitesRouter from './routes/sites.js';
 import productTypesRouter from './routes/productTypes.js';
 import assetsRouter from './routes/assets.js';
 import rentalsRouter from './routes/rentals.js';
+import fleetRouter from './routes/fleet.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -52,6 +53,7 @@ app.use('/api/sites', authMiddleware, sitesRouter);
 app.use('/api/product-types', authMiddleware, productTypesRouter);
 app.use('/api/assets', authMiddleware, assetsRouter);
 app.use('/api/rentals', authMiddleware, rentalsRouter);
+app.use('/api/fleet', authMiddleware, fleetRouter);
 
 // Tratamento central de erros
 app.use((err, req, res, next) => {
