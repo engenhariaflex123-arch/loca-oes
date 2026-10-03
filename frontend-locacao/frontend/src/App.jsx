@@ -251,6 +251,7 @@ export default function App(){
         )}
         {tab === 'equipes' && (
           <div className="flex flex-col gap-8">
+            <CampoAppLink />
             <EquipesTab teamMembers={teamMembers} setTeamMembers={setTeamMembers} appointments={appointments} user={user} />
             <VehiclesSection />
           </div>
@@ -847,6 +848,28 @@ function TarefasTab({ taskTypes, setTaskTypes }){
 // ---------------------------------------------------------------------------
 // EQUIPES
 // ---------------------------------------------------------------------------
+function CampoAppLink(){
+  const url = `${window.location.origin}/campo`;
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try{ await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }catch(e){ window.prompt('Copie o endereço:', url); }
+  };
+  const whats = `https://wa.me/?text=${encodeURIComponent(`App da equipe Flex Locações: ${url}\nEntre com a sua equipe e a senha que o escritório passou.`)}`;
+  return (
+    <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+      <div className="min-w-0">
+        <p className="text-sm font-medium">App das equipes de campo</p>
+        <p className="text-xs text-neutral-500">Abra no celular, entre com a equipe e a senha definida abaixo. Dica: use "Adicionar à tela inicial" para virar um ícone.</p>
+        <p className="text-sm font-mono text-brand-600 dark:text-brand-400 mt-1 truncate">{url}</p>
+      </div>
+      <div className="flex gap-2 shrink-0">
+        <button onClick={copy} className="px-3 py-2 text-sm rounded border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800">{copied ? 'Copiado!' : 'Copiar link'}</button>
+        <a href={whats} target="_blank" rel="noreferrer" className="px-3 py-2 text-sm rounded bg-brand-600 hover:bg-brand-500 text-white font-medium">Enviar no WhatsApp</a>
+      </div>
+    </div>
+  );
+}
+
 function EquipesTab({ teamMembers, setTeamMembers, appointments, user }){
   const [inputs, setInputs] = useState({ verde: '', azul: '', laranja: '', roxo: '' });
   const [teamPasswords, setTeamPasswords] = useState({});
