@@ -6,13 +6,14 @@ export default {
     extend: {
       colors: {
         brand: {
-          50: '#eef6e9',
-          100: '#d7e8cb',
-          400: '#6ea34d',
-          500: '#578f3b',
-          600: '#47782e',
-          700: '#395f25',
-          950: '#16240f',
+          // Azul Flex Locações (antes era o verde da Flex Medições Ambientais)
+          50: '#eaf2fb',
+          100: '#cfe0f5',
+          400: '#3d82d1',
+          500: '#2a6fbd',
+          600: '#1f5ca3',
+          700: '#1a4c86',
+          950: '#0b1b30',
         },
       },
     },
