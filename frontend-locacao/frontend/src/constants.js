@@ -25,13 +25,13 @@ export const RENTAL_STATUS = {
   orcamento:    { label: 'Orçamento',    cls: 'bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300' },
   confirmado:   { label: 'Confirmada',   cls: 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300' },
   em_andamento: { label: 'Em andamento', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' },
-  encerrado:    { label: 'Encerrada',    cls: 'bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-400' },
+  encerrado:    { label: 'Encerrada',    cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' },
   cancelado:    { label: 'Cancelada',    cls: 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300' },
 };
 
 // color = cor da barra no resumo de estoque
 export const ASSET_STATUS = {
-  disponivel:   { label: 'Disponível',   one: 'disponível', many: 'disponíveis', color: '#578f3b', cls: 'bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-400' },
+  disponivel:   { label: 'Disponível',   one: 'disponível', many: 'disponíveis', color: '#059669', cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' },
   locado:       { label: 'Locada',       one: 'locada', many: 'locadas', color: '#0284c7', cls: 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300' },
   higienizacao: { label: 'Higienização', one: 'em higienização', many: 'em higienização', color: '#d97706', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' },
   manutencao:   { label: 'Manutenção',   one: 'em manutenção', many: 'em manutenção', color: '#ea580c', cls: 'bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300' },
@@ -42,7 +42,7 @@ export const ASSET_STATUS = {
 export const APPT_STATUS = {
   pendente:      { label: 'Pendente',      cls: 'bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300' },
   em_rota:       { label: 'Em rota',       cls: 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300' },
-  concluido:     { label: 'Concluída',     cls: 'bg-brand-100 text-brand-700 dark:bg-brand-950 dark:text-brand-400' },
+  concluido:     { label: 'Concluída',     cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' },
   nao_realizado: { label: 'Não realizada', cls: 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300' },
   cancelado:     { label: 'Cancelada',     cls: 'bg-neutral-200 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-500' },
 };

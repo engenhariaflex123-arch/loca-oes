@@ -84,7 +84,7 @@ export default function App(){
   const [user, setUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [theme, setTheme] = useState(() => {
-    try{ return localStorage.getItem('logistica-theme') || 'dark'; }catch(e){ return 'dark'; }
+    try{ return localStorage.getItem('logistica-theme') || 'light'; }catch(e){ return 'light'; }
   });
 
   useEffect(() => {
@@ -176,7 +176,7 @@ export default function App(){
   }
 
   if(!user){
-    return <AuthScreen onSuccess={handleAuthSuccess} theme={theme} />;
+    return <AuthScreen onSuccess={handleAuthSuccess} theme={theme} onToggleTheme={toggleTheme} />;
   }
 
   if(error){
@@ -194,7 +194,7 @@ export default function App(){
     <div className="w-full min-h-screen bg-neutral-100 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
       <div className="border-b border-neutral-200 dark:border-neutral-800 px-6 py-4 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="Logo da empresa" className="h-16 w-auto" />
+          <img src="/logo.png" alt="Flex Locações" className="h-16 w-auto" />
           <div>
             <div className="text-xs font-mono uppercase tracking-widest text-brand-500">Plataforma de logística</div>
             <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">Locações, agenda e equipes</h1>
@@ -1954,7 +1954,7 @@ function WeekSuggestionModal({ clients, appointments, taskTypes, base, setAppoin
 // ---------------------------------------------------------------------------
 // AUTENTICAÇÃO
 // ---------------------------------------------------------------------------
-function AuthScreen({ onSuccess, theme }){
+function AuthScreen({ onSuccess, theme, onToggleTheme }){
   const [mode, setMode] = useState('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -1982,9 +1982,19 @@ function AuthScreen({ onSuccess, theme }){
   };
 
   return (
-    <div className={`w-full min-h-screen flex items-center justify-center bg-neutral-100 dark:bg-neutral-950 p-6 ${theme === 'dark' ? 'dark' : ''}`}>
+    <div className={`relative w-full min-h-screen flex items-center justify-center bg-neutral-100 dark:bg-neutral-950 p-6 ${theme === 'dark' ? 'dark' : ''}`}>
+      {onToggleTheme && (
+        <button
+          onClick={onToggleTheme}
+          title={theme === 'dark' ? 'Mudar para modo claro' : 'Mudar para modo escuro'}
+          aria-label={theme === 'dark' ? 'Mudar para modo claro' : 'Mudar para modo escuro'}
+          className="absolute top-4 right-4 p-2 rounded border border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800"
+        >
+          {theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}
+        </button>
+      )}
       <div className="w-full max-w-sm bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-6">
-        <img src="/logo.png" alt="Flex Medições Ambientais" className="h-20 w-auto mb-4" />
+        <img src="/logo.png" alt="Flex Locações" className="h-20 w-auto mb-4" />
         <div className="text-xs font-mono uppercase tracking-widest text-brand-500 mb-1">Plataforma de logística</div>
         <h1 className="text-xl font-semibold mb-5 text-neutral-900 dark:text-neutral-50">
           {mode === 'login' ? 'Entrar' : 'Criar conta'}
