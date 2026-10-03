@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Users, ClipboardList, MapPin, Plus, X, Trash2, Edit2, ChevronLeft, ChevronRight, ExternalLink, Sun, Moon, Maximize, Minimize, Route, LogOut, ShieldCheck, History, FileBarChart, Upload, UserPlus, Check, Tent, Boxes, Eye, EyeOff, Truck } from 'lucide-react';
+import { Calendar, Users, ClipboardList, MapPin, Plus, X, Trash2, Edit2, ChevronLeft, ChevronRight, ExternalLink, Sun, Moon, Maximize, Minimize, Route, LogOut, ShieldCheck, History, FileBarChart, Upload, UserPlus, Check, Tent, Boxes, Eye, EyeOff } from 'lucide-react';
 import { api, setAuthToken } from './api.js';
 import * as XLSX from 'xlsx';
 import { TEAMS, teamOf, kindLabel, APPT_STATUS } from './constants.js';
 import { LocacoesTab } from './locacoes.jsx';
 import { EstoqueTab } from './estoque.jsx';
-import { FrotaTab } from './frota.jsx';
+import { useFleet, useFleetLayer, FleetPanel, VehiclesSection } from './frota.jsx';
 
 
 const MONTHS_PT = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -165,7 +165,6 @@ export default function App(){
     { id: 'tarefas',  label: 'Tarefas',  icon: ClipboardList },
     { id: 'equipes',  label: 'Equipes',  icon: Users },
     { id: 'mapa',     label: 'Mapa',     icon: MapPin },
-    { id: 'frota',    label: 'Frota',    icon: Truck },
     { id: 'relatorios', label: 'Relatórios', icon: FileBarChart },
     { id: 'auditoria', label: 'Auditoria', icon: History },
     ...(user?.role === 'admin' ? [{ id: 'usuarios', label: 'Usuários', icon: UserPlus }] : []),
@@ -251,13 +250,13 @@ export default function App(){
           <TarefasTab taskTypes={taskTypes} setTaskTypes={setTaskTypes} />
         )}
         {tab === 'equipes' && (
-          <EquipesTab teamMembers={teamMembers} setTeamMembers={setTeamMembers} appointments={appointments} user={user} />
+          <div className="flex flex-col gap-8">
+            <EquipesTab teamMembers={teamMembers} setTeamMembers={setTeamMembers} appointments={appointments} user={user} />
+            <VehiclesSection />
+          </div>
         )}
         {tab === 'mapa' && (
           <MapaTab clients={clients} appointments={appointments} taskTypes={taskTypes} base={base} setBase={updateBase} setAppointments={setAppointments} />
-        )}
-        {tab === 'frota' && (
-          <FrotaTab appointments={appointments} clients={clients} sites={sites} />
         )}
         {tab === 'relatorios' && (
           <RelatoriosTab clients={clients} appointments={appointments} taskTypes={taskTypes} base={base} />
@@ -1160,7 +1159,7 @@ function MapaTab({ clients, appointments, taskTypes, base, setBase, setAppointme
       L.control.layers({ 'Mapa': streets, 'Satélite': satellite }, {}, { position: 'topright' }).addTo(mapInstance.current);
     }
     const map = mapInstance.current;
-    map.eachLayer(layer => { if(layer instanceof L.Marker || layer instanceof L.Polyline || layer instanceof L.GeoJSON) map.removeLayer(layer); });
+    map.eachLayer(layer => { if(layer.options?.fleet) return; if(layer instanceof L.Marker || layer instanceof L.Polyline || layer instanceof L.GeoJSON) map.removeLayer(layer); });
 
     const group = L.featureGroup();
     let hasAny = false;
@@ -1250,6 +1249,15 @@ function MapaTab({ clients, appointments, taskTypes, base, setBase, setAppointme
       try{ map.fitBounds(group.getBounds(), { padding: [30,30] }); }catch(e){}
     }
   }, [leafletReady, dateKey, pins.length, base, routes, mapMode, weekRoutes]);
+
+
+  // Frota: veículos ao vivo (só quando o mapa mostra hoje) e trajeto feito em qualquer dia
+  const isToday = mapMode === 'day' && dateKey === todayKey();
+  const fleet = useFleet({ liveEnabled: isToday });
+  const [fleetTrack, setFleetTrack] = useState(null);
+  useEffect(() => { setFleetTrack(null); }, [dateKey, mapMode]);
+  const fleetStops = pins.filter(p => p.client.lat && p.client.lon).map(p => [parseFloat(p.client.lat), parseFloat(p.client.lon)]);
+  const fleetLayer = useFleetLayer({ mapRef: mapInstance, ready: leafletReady, live: fleet.live, track: fleetTrack, vehicles: fleet.vehicles, extraPoints: fleetStops, frameKey: dateKey });
 
   return (
     <div className="flex flex-col gap-4">
@@ -1425,13 +1433,15 @@ function MapaTab({ clients, appointments, taskTypes, base, setBase, setAppointme
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
         <div
           ref={fullscreenRef}
           className={`relative bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg overflow-hidden ${isFullscreen ? 'flex flex-col' : ''}`}
         >
-          <div ref={mapRef} style={isFullscreen ? { flex: 1 } : { height: 380 }} />
+          <div ref={mapRef} style={isFullscreen ? { flex: 1 } : { height: 520 }} />
         </div>
+        <div className="flex flex-col gap-4">
+        <FleetPanel fleet={fleet} isToday={isToday} dateKey={dateKey} track={fleetTrack} setTrack={setFleetTrack} onFocus={fleetLayer.focus} />
         <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-4">
           <h3 className="text-sm font-medium mb-3">Paradas do dia</h3>
           {pins.length === 0 && <p className="text-sm text-neutral-500">Nenhum agendamento para esta data.</p>}
@@ -1458,6 +1468,7 @@ function MapaTab({ clients, appointments, taskTypes, base, setBase, setAppointme
               );
             })}
           </ul>
+        </div>
         </div>
       </div>
 
@@ -1726,7 +1737,7 @@ function WeekSuggestionModal({ clients, appointments, taskTypes, base, setAppoin
       }).addTo(mapInstance.current);
     }
     const map = mapInstance.current;
-    map.eachLayer(layer => { if(layer instanceof L.Marker || layer instanceof L.Polyline || layer instanceof L.GeoJSON) map.removeLayer(layer); });
+    map.eachLayer(layer => { if(layer.options?.fleet) return; if(layer instanceof L.Marker || layer instanceof L.Polyline || layer instanceof L.GeoJSON) map.removeLayer(layer); });
 
     const group = L.featureGroup();
     let hasAny = false;

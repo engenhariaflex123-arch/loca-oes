@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Edit2, Trash2, RefreshCw, Route as RouteIcon, X, Crosshair } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Edit2, Trash2, RefreshCw, Route as RouteIcon, X } from 'lucide-react';
 import { api } from './api.js';
-import { TEAMS, teamOf, kindLabel, ui } from './constants.js';
+import { TEAMS, teamOf, ui } from './constants.js';
 import { Modal } from './locacoes.jsx';
 
 const REFRESH_MS = 30000;
-const DEFAULT_CENTER = [-20.1436, -44.8891];
 
 const STATE_META = {
   em_movimento: { label: 'Em movimento', dot: '#2a6fbd' },
@@ -26,293 +25,197 @@ function fmtAge(sec){
   return `há ${Math.round(sec / 86400)} dia(s)`;
 }
 
-function todayBR(){
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
-}
-
-// Carrega o Leaflet uma vez só (o mesmo arquivo que a aba Mapa usa)
-let leafletPromise = null;
-function loadLeaflet(){
-  if(window.L) return Promise.resolve(window.L);
-  if(leafletPromise) return leafletPromise;
-  leafletPromise = new Promise((resolve, reject) => {
-    const css = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
-    const js = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
-    if(!document.querySelector(`link[href="${css}"]`)){
-      const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = css; document.head.appendChild(link);
-    }
-    const existing = document.querySelector(`script[src="${js}"]`);
-    const script = existing || document.createElement('script');
-    script.addEventListener('load', () => resolve(window.L));
-    script.addEventListener('error', () => { leafletPromise = null; reject(new Error('Não foi possível carregar o mapa.')); });
-    if(!existing){ script.src = js; document.body.appendChild(script); }
-    else if(window.L) resolve(window.L);
-  });
-  return leafletPromise;
-}
 
 // ---------------------------------------------------------------------------
-// ABA FROTA
+// DADOS DA FROTA (usado pela aba Mapa)
 // ---------------------------------------------------------------------------
-export function FrotaTab({ appointments, clients, sites }){
+// `liveEnabled`: busca posições ao vivo (só faz sentido quando o mapa mostra hoje)
+export function useFleet({ liveEnabled }){
   const [configured, setConfigured] = useState(null);
-  const [live, setLive] = useState(null);
-  const [liveError, setLiveError] = useState('');
-  const [loading, setLoading] = useState(false);
   const [vehicles, setVehicles] = useState([]);
-  const [form, setForm] = useState(null);
-  const [track, setTrack] = useState(null); // { vehicleId, points, error }
-  const [selected, setSelected] = useState(null);
-  const [mapError, setMapError] = useState('');
-  const [tick, setTick] = useState(0);
-
-  const mapEl = useRef(null);
-  const map = useRef(null);
-  const layers = useRef({});
-
-  const loadVehicles = async () => setVehicles(await api.fleet.vehicles());
-  const loadLive = async () => {
-    setLoading(true);
-    try{
-      setLive(await api.fleet.live());
-      setLiveError('');
-    }catch(err){
-      setLiveError(err.message);
-    }finally{ setLoading(false); }
-  };
+  const [live, setLive] = useState(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     api.fleet.status().then(s => setConfigured(s.configured)).catch(() => setConfigured(false));
-    loadVehicles().catch(() => {});
+    api.fleet.vehicles().then(setVehicles).catch(() => {});
   }, []);
 
+  const refresh = async () => {
+    setLoading(true);
+    try{ setLive(await api.fleet.live()); setError(''); }
+    catch(err){ setError(err.message); }
+    finally{ setLoading(false); }
+  };
+
   useEffect(() => {
-    if(!configured) return;
-    loadLive();
-    const id = setInterval(loadLive, REFRESH_MS);
+    if(!configured || !liveEnabled) return;
+    refresh();
+    const id = setInterval(refresh, REFRESH_MS);
     return () => clearInterval(id);
-  }, [configured]);
+  }, [configured, liveEnabled]);
 
-  // Relógio para o "atualizado há X s"
-  useEffect(() => { const id = setInterval(() => setTick(t => t + 1), 5000); return () => clearInterval(id); }, []);
+  return { configured, vehicles: vehicles.filter(v => v.active), live: liveEnabled ? live : null, error: liveEnabled ? error : '', loading, refresh };
+}
 
-  // Visitas de hoje, com o endereço onde acontecem
-  const today = todayBR();
-  const todayStops = useMemo(() => {
-    const siteById = Object.fromEntries(sites.map(s => [s.id, s]));
-    const clientById = Object.fromEntries(clients.map(c => [c.id, c]));
-    return appointments
-      .filter(a => a.date === today && a.status !== 'cancelado')
-      .map(a => {
-        const site = a.siteId ? siteById[a.siteId] : null;
-        const client = clientById[a.clientId];
-        const lat = parseFloat(site ? site.lat : client?.lat);
-        const lon = parseFloat(site ? site.lon : client?.lon);
-        return { appt: a, name: client?.name || 'Cliente', place: site?.name || client?.address || '', lat, lon };
-      })
-      .filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon));
-  }, [appointments, clients, sites, today]);
+// Desenha veículos e trajeto num mapa Leaflet que já existe.
+// As camadas levam a marca `fleet: true` para a aba Mapa não apagá-las ao redesenhar as paradas.
+export function useFleetLayer({ mapRef, ready, live, track, vehicles, extraPoints = [], frameKey }){
+  const groups = useRef(null);
+  const markers = useRef({});
+  const framedFor = useRef(null);
 
-  // Monta o mapa
-  useEffect(() => {
-    let cancelled = false;
-    loadLeaflet().then(L => {
-      if(cancelled || !mapEl.current || map.current) return;
-      map.current = L.map(mapEl.current, { zoomControl: true }).setView(DEFAULT_CENTER, 12);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19, attribution: '&copy; OpenStreetMap',
-      }).addTo(map.current);
-      layers.current.stops = L.layerGroup().addTo(map.current);
-      layers.current.track = L.layerGroup().addTo(map.current);
-      layers.current.vehicles = L.layerGroup().addTo(map.current);
-      layers.current.markers = {};
-      setTick(t => t + 1);
-    }).catch(err => setMapError(err.message));
-    return () => { cancelled = true; };
-  }, []);
+  const ensure = () => {
+    const L = window.L, map = mapRef.current;
+    if(!L || !map) return null;
+    if(!groups.current){
+      groups.current = { vehicles: L.layerGroup().addTo(map), track: L.layerGroup().addTo(map) };
+    }
+    return groups.current;
+  };
 
-  useEffect(() => () => { if(map.current){ map.current.remove(); map.current = null; } }, []);
-
-  // Desenha visitas do dia
   useEffect(() => {
     const L = window.L;
-    if(!L || !map.current) return;
-    const g = layers.current.stops; g.clearLayers();
-    todayStops.forEach(s => {
-      const team = teamOf(s.appt.teamId);
-      const done = s.appt.status === 'concluido';
-      const icon = L.divIcon({
-        className: '',
-        html: `<div style="width:14px;height:14px;border-radius:3px;background:${done ? '#fff' : team.color};border:2px solid ${team.color};box-shadow:0 1px 3px rgba(0,0,0,.35)"></div>`,
-        iconSize: [14, 14], iconAnchor: [7, 7],
-      });
-      L.marker([s.lat, s.lon], { icon, zIndexOffset: -100 })
-        .bindPopup(`<b>${esc(kindLabel(s.appt.kind))}</b>: ${esc(s.name)}<br><span style="color:#666">${esc(s.place)}</span><br>${esc(team.name)}${done ? ' (concluída)' : ''}`)
-        .addTo(g);
-    });
-  }, [todayStops, tick]);
-
-  // Desenha veículos
-  useEffect(() => {
-    const L = window.L;
-    if(!L || !map.current || !live) return;
-    const g = layers.current.vehicles; g.clearLayers();
-    layers.current.markers = {};
-    live.vehicles.forEach(v => {
+    const g = ready && ensure();
+    if(!g) return;
+    g.vehicles.clearLayers();
+    markers.current = {};
+    (live?.vehicles || []).forEach(v => {
       if(!v.position) return;
       const team = v.teamId ? teamOf(v.teamId) : null;
       const color = v.state === 'sem_sinal' ? '#a3a3a3' : (team?.color || '#2a6fbd');
-      const label = esc(v.plate || v.name);
+      const meta = STATE_META[v.state] || STATE_META.sem_dados;
       const icon = L.divIcon({
         className: '',
         html: `<div style="display:flex;align-items:center;gap:4px;width:max-content;transform:translate(-11px,-11px)">
-          <div style="flex:none;box-sizing:border-box;width:22px;height:22px;border-radius:50%;background:${color};border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45)"></div>
-          <span style="background:#fff;color:#171717;font:600 11px system-ui,sans-serif;padding:1px 5px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,.3);white-space:nowrap">${label}</span>
+          <div style="flex:none;box-sizing:border-box;width:22px;height:22px;border-radius:6px;background:${color};border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4V5H2v12h3"/><path d="M20 17h2v-3.34a4 4 0 0 0-1.17-2.83L19 9h-5v8h1"/></svg>
+          </div>
+          <span style="background:#fff;color:#171717;font:600 11px system-ui,sans-serif;padding:1px 5px;border-radius:4px;box-shadow:0 1px 3px rgba(0,0,0,.3);white-space:nowrap">${esc(v.plate || v.name)}</span>
         </div>`,
         iconSize: [0, 0],
       });
-      const meta = STATE_META[v.state] || STATE_META.sem_dados;
-      const m = L.marker([v.position.lat, v.position.lng], { icon })
-        .bindPopup(`<b>${esc(v.name)}</b>${v.plate ? ` (${esc(v.plate)})` : ''}<br>${esc(meta.label)}${v.position.speed ? `, ${Math.round(v.position.speed)} km/h` : ''}<br><span style="color:#666">Posição ${esc(fmtAge(v.position.ageSec))}${team ? ` · ${esc(team.name)}` : ''}</span>`)
-        .addTo(g);
-      layers.current.markers[v.id] = m;
+      const m = L.marker([v.position.lat, v.position.lng], { icon, fleet: true, zIndexOffset: 1000 })
+        .bindPopup(`<b>${esc(v.name)}</b>${v.plate ? ` (${esc(v.plate)})` : ''}<br>${esc(meta.label)}${v.position.speed ? `, ${Math.round(v.position.speed)} km/h` : ''}<br><span style="color:#666">Posição ${esc(fmtAge(v.position.ageSec))}${team ? ` · ${esc(team.name)}` : ''}</span>`);
+      m.addTo(g.vehicles);
+      markers.current[v.id] = m;
     });
-  }, [live, tick]);
-
-  // Enquadra tudo na primeira carga
-  const framed = useRef(false);
-  useEffect(() => {
-    const L = window.L;
-    if(!L || !map.current || framed.current || !live) return;
+    // Na primeira posição recebida (para cada data), enquadra veículos + paradas juntos
     const pts = [
-      ...live.vehicles.filter(v => v.position).map(v => [v.position.lat, v.position.lng]),
-      ...todayStops.map(s => [s.lat, s.lon]),
+      ...(live?.vehicles || []).filter(v => v.position && v.state !== 'sem_sinal').map(v => [v.position.lat, v.position.lng]),
+      ...extraPoints,
     ];
-    if(pts.length){ map.current.fitBounds(L.latLngBounds(pts).pad(0.2), { maxZoom: 15 }); framed.current = true; }
-  }, [live, todayStops, tick]);
+    if(live && pts.length && framedFor.current !== frameKey){
+      framedFor.current = frameKey;
+      mapRef.current.fitBounds(L.latLngBounds(pts).pad(0.15), { maxZoom: 15 });
+    }
+  }, [ready, live]);
 
-  // Trajeto
   useEffect(() => {
     const L = window.L;
-    if(!L || !map.current) return;
-    const g = layers.current.track; g.clearLayers();
+    const g = ready && ensure();
+    if(!g) return;
+    g.track.clearLayers();
     if(!track?.points?.length) return;
     const v = vehicles.find(x => x.id === track.vehicleId);
     const color = v?.teamId ? teamOf(v.teamId).color : '#2a6fbd';
     const latlngs = track.points.map(p => [p.lat, p.lng]);
-    L.polyline(latlngs, { color, weight: 4, opacity: 0.8 }).addTo(g);
-    L.circleMarker(latlngs[0], { radius: 6, color, fillColor: '#fff', fillOpacity: 1, weight: 3 })
-      .bindTooltip('Início do dia').addTo(g);
-    map.current.fitBounds(L.latLngBounds(latlngs).pad(0.15), { maxZoom: 16 });
-  }, [track, tick]);
+    L.polyline(latlngs, { color, weight: 4, opacity: 0.85, dashArray: '1,7', lineCap: 'round', fleet: true }).addTo(g.track);
+    L.circleMarker(latlngs[0], { radius: 6, color, fillColor: '#fff', fillOpacity: 1, weight: 3, fleet: true })
+      .bindTooltip('Início do trajeto').addTo(g.track);
+    L.circleMarker(latlngs[latlngs.length - 1], { radius: 6, color, fillColor: color, fillOpacity: 1, weight: 3, fleet: true })
+      .bindTooltip('Último ponto').addTo(g.track);
+    mapRef.current.fitBounds(L.latLngBounds(latlngs).pad(0.15), { maxZoom: 16 });
+  }, [ready, track]);
 
-  const focus = (v) => {
-    setSelected(v.id);
-    const m = layers.current.markers?.[v.id];
-    if(m && map.current){ map.current.setView(m.getLatLng(), Math.max(map.current.getZoom(), 15)); m.openPopup(); }
+  const focus = (vehicleId) => {
+    const m = markers.current[vehicleId];
+    if(m && mapRef.current){ mapRef.current.setView(m.getLatLng(), Math.max(mapRef.current.getZoom(), 15)); m.openPopup(); }
   };
+  return { focus };
+}
 
-  const showTrack = async (v) => {
+// Lista de veículos ao lado do mapa
+export function FleetPanel({ fleet, isToday, dateKey, track, setTrack, onFocus }){
+  const { configured, vehicles, live, error, loading, refresh } = fleet;
+  if(configured === null) return null;
+  if(vehicles.length === 0){
+    return (
+      <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-4">
+        <h3 className="text-sm font-medium mb-1">Veículos</h3>
+        <p className="text-sm text-neutral-500">Cadastre os veículos na aba Equipes para vê-los aqui.</p>
+      </div>
+    );
+  }
+  const liveById = Object.fromEntries((live?.vehicles || []).map(v => [v.id, v]));
+
+  const toggleTrack = async (v) => {
     if(track?.vehicleId === v.id){ setTrack(null); return; }
     setTrack({ vehicleId: v.id, points: null });
     try{
-      const r = await api.fleet.track(v.id);
-      setTrack({ vehicleId: v.id, points: r.points, error: r.points.length ? '' : 'Sem trajeto registrado hoje.' });
-    }catch(err){
-      setTrack({ vehicleId: v.id, points: [], error: err.message });
-    }
+      const r = await api.fleet.track(v.id, dateKey);
+      setTrack({ vehicleId: v.id, points: r.points, error: r.points.length ? '' : (isToday ? 'Sem trajeto registrado hoje.' : 'Sem trajeto registrado nesse dia.') });
+    }catch(err){ setTrack({ vehicleId: v.id, points: [], error: err.message }); }
   };
 
-  const liveById = Object.fromEntries((live?.vehicles || []).map(v => [v.id, v]));
-  const updatedAgo = live ? Math.round((Date.now() - Date.parse(live.updatedAt)) / 1000) : null;
-
   return (
-    <div className="flex flex-col gap-6">
+    <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg">
+      <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2">
+        <h3 className="text-sm font-medium">{isToday ? 'Veículos agora' : 'Veículos'}</h3>
+        {configured && isToday && (
+          <button onClick={refresh} disabled={loading} aria-label="Atualizar posições" title="Atualizar posições" className="p-1 text-neutral-500 hover:text-brand-500">
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''}/>
+          </button>
+        )}
+      </div>
       {configured === false && (
-        <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-4 text-sm">
-          <p className="font-medium text-amber-900 dark:text-amber-200">Falta ligar a plataforma ao IOP GPS</p>
-          <p className="text-amber-800 dark:text-amber-300 mt-1">
-            No Railway, no serviço do backend, crie as variáveis <code className="font-mono">IOPGPS_APPID</code> e <code className="font-mono">IOPGPS_API_KEY</code> com os dados fornecidos pelo IOP GPS. Você já pode cadastrar os veículos abaixo enquanto isso.
-          </p>
-        </div>
+        <p className="px-4 pb-2 text-xs text-amber-700 dark:text-amber-400">Falta ligar ao IOP GPS: defina IOPGPS_APPID e IOPGPS_API_KEY no Railway.</p>
       )}
-
-      <section>
-        <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-          <h2 className="text-lg font-medium">Frota agora</h2>
-          <div className="flex items-center gap-3 text-xs text-neutral-500">
-            {updatedAgo != null && <span>Atualizado {updatedAgo < 10 ? 'agora' : `há ${updatedAgo} s`}</span>}
-            {configured && (
-              <button onClick={loadLive} disabled={loading} className={`${ui.secondary} flex items-center gap-1.5 !py-1.5 text-xs`}>
-                <RefreshCw size={13} className={loading ? 'animate-spin' : ''}/> Atualizar
-              </button>
-            )}
-          </div>
-        </div>
-
-        {liveError && <p className="text-sm text-red-500 mb-2">{liveError}</p>}
-
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_20rem] gap-4">
-          <div className={`${ui.card} overflow-hidden relative`}>
-            <div ref={mapEl} className="h-[26rem] lg:h-[32rem] w-full z-0" role="region" aria-label="Mapa da frota" />
-            {mapError && <p className="absolute inset-0 flex items-center justify-center text-sm text-red-500">{mapError}</p>}
-            <div className="absolute bottom-2 left-2 z-[400] bg-white/90 dark:bg-neutral-900/90 rounded px-2 py-1 text-[11px] text-neutral-600 dark:text-neutral-300 flex gap-3">
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full bg-neutral-500 border-2 border-white"/>Veículo</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-neutral-500"/>Visita de hoje</span>
-              <span className="flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm border-2 border-neutral-500 bg-white"/>Concluída</span>
-            </div>
-          </div>
-
-          <div className={`${ui.card} divide-y divide-neutral-200 dark:divide-neutral-800 self-start`}>
-            {vehicles.filter(v => v.active).length === 0 && (
-              <p className="p-4 text-sm text-neutral-500">Nenhum veículo cadastrado. Use o botão abaixo para ligar cada veículo ao seu rastreador.</p>
-            )}
-            {vehicles.filter(v => v.active).map(v => {
-              const lv = liveById[v.id];
-              const meta = STATE_META[lv?.state] || (configured ? STATE_META.sem_dados : null);
-              const team = v.teamId ? teamOf(v.teamId) : null;
-              const tracking = track?.vehicleId === v.id;
-              return (
-                <div key={v.id} className={`px-3 py-2.5 ${selected === v.id ? 'bg-neutral-50 dark:bg-neutral-800/50' : ''}`}>
-                  <div className="flex items-start justify-between gap-2">
-                    <button onClick={() => focus(v)} disabled={!lv?.position} className="text-left min-w-0 disabled:cursor-default">
-                      <p className="text-sm font-medium truncate flex items-center gap-1.5">
-                        {team && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: team.color }} title={team.name}/>}
-                        {v.name}
-                      </p>
-                      <p className="text-xs text-neutral-500 flex items-center gap-1.5 mt-0.5">
-                        {meta && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: meta.dot }}/>}
-                        {meta?.label || 'Aguardando integração'}
-                        {lv?.state === 'em_movimento' && lv.position.speed != null && `, ${Math.round(lv.position.speed)} km/h`}
-                        {lv?.position && lv.state !== 'em_movimento' && ` ${fmtAge(lv.position.ageSec)}`}
-                      </p>
-                    </button>
-                    <div className="flex shrink-0">
-                      {lv?.position && (
-                        <button onClick={() => focus(v)} aria-label={`Centralizar ${v.name}`} title="Mostrar no mapa" className="p-1.5 text-neutral-500 hover:text-brand-500"><Crosshair size={14}/></button>
-                      )}
-                      {configured && (
-                        <button onClick={() => showTrack(v)} aria-pressed={tracking} aria-label={`Trajeto de hoje de ${v.name}`} title={tracking ? 'Esconder trajeto' : 'Trajeto de hoje'}
-                          className={`p-1.5 ${tracking ? 'text-brand-600 dark:text-brand-400' : 'text-neutral-500 hover:text-brand-500'}`}>
-                          {tracking ? <X size={14}/> : <RouteIcon size={14}/>}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {tracking && (
-                    <p className="text-xs mt-1 text-neutral-500">
-                      {track.points === null ? 'Carregando trajeto...' : track.error ? <span className={track.points.length ? '' : 'text-amber-600 dark:text-amber-400'}>{track.error}</span> : `Trajeto de hoje: ${track.points.length} pontos`}
+      {error && <p className="px-4 pb-2 text-xs text-red-500">{error}</p>}
+      {!isToday && configured && <p className="px-4 pb-2 text-xs text-neutral-500">Posição ao vivo só aparece no dia de hoje. Para esta data, veja o trajeto feito.</p>}
+      <ul className="divide-y divide-neutral-200 dark:divide-neutral-800 border-t border-neutral-200 dark:border-neutral-800">
+        {vehicles.map(v => {
+          const lv = liveById[v.id];
+          const meta = isToday && configured ? (STATE_META[lv?.state] || (live ? STATE_META.sem_dados : null)) : null;
+          const team = v.teamId ? teamOf(v.teamId) : null;
+          const tracking = track?.vehicleId === v.id;
+          return (
+            <li key={v.id} className="px-4 py-2">
+              <div className="flex items-start justify-between gap-2">
+                <button onClick={() => onFocus(v.id)} disabled={!lv?.position} className="text-left min-w-0 disabled:cursor-default">
+                  <p className="text-sm truncate flex items-center gap-1.5">
+                    {team && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: team.color }} title={team.name}/>}
+                    {v.name}{v.plate && <span className="text-xs text-neutral-500 font-mono">{v.plate}</span>}
+                  </p>
+                  {meta && (
+                    <p className="text-xs text-neutral-500 flex items-center gap-1.5 mt-0.5">
+                      <span className="w-2 h-2 rounded-full shrink-0" style={{ background: meta.dot }}/>
+                      {meta.label}
+                      {lv?.state === 'em_movimento' && lv.position.speed != null && `, ${Math.round(lv.position.speed)} km/h`}
+                      {lv?.position && lv.state !== 'em_movimento' && ` ${fmtAge(lv.position.ageSec)}`}
                     </p>
                   )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      <VehiclesSection vehicles={vehicles} configured={configured} onChanged={async () => { await loadVehicles(); if(configured) await loadLive(); }}
-        form={form} setForm={setForm} />
+                </button>
+                {configured && (
+                  <button onClick={() => toggleTrack(v)} aria-pressed={tracking}
+                    aria-label={`${tracking ? 'Esconder' : 'Mostrar'} trajeto de ${v.name}`} title={tracking ? 'Esconder trajeto' : 'Trajeto feito no dia'}
+                    className={`p-1.5 shrink-0 ${tracking ? 'text-brand-600 dark:text-brand-400' : 'text-neutral-500 hover:text-brand-500'}`}>
+                    {tracking ? <X size={14}/> : <RouteIcon size={14}/>}
+                  </button>
+                )}
+              </div>
+              {tracking && (
+                <p className="text-xs mt-1 text-neutral-500">
+                  {track.points === null ? 'Carregando trajeto...'
+                    : track.error ? <span className="text-amber-600 dark:text-amber-400">{track.error}</span>
+                    : `Trajeto feito: ${track.points.length} pontos (linha pontilhada)`}
+                </p>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
@@ -320,7 +223,15 @@ export function FrotaTab({ appointments, clients, sites }){
 // ---------------------------------------------------------------------------
 // CADASTRO DE VEÍCULOS
 // ---------------------------------------------------------------------------
-function VehiclesSection({ vehicles, configured, onChanged, form, setForm }){
+export function VehiclesSection(){
+  const [vehicles, setVehicles] = useState([]);
+  const [configured, setConfigured] = useState(null);
+  const [form, setForm] = useState(null);
+  const onChanged = async () => setVehicles(await api.fleet.vehicles());
+  useEffect(() => {
+    api.fleet.status().then(s => setConfigured(s.configured)).catch(() => setConfigured(false));
+    onChanged().catch(() => {});
+  }, []);
   const [error, setError] = useState('');
   const remove = async (v) => {
     if(!window.confirm(`Remover "${v.name}" da plataforma? O rastreador continua funcionando no IOP GPS.`)) return;
