@@ -1153,7 +1153,9 @@ function MapaTab({ clients, appointments, taskTypes, base, setBase, setAppointme
         attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
       });
       const satellite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-        attribution: 'Tiles &copy; Esri', maxZoom: 19,
+        // Fotos de satélite só existem até certo zoom (varia por região). Acima disso, amplia a última
+        // imagem disponível em vez de mostrar "Map data not yet available".
+        attribution: 'Tiles &copy; Esri', maxNativeZoom: 17, maxZoom: 19,
       });
       streets.addTo(mapInstance.current);
       L.control.layers({ 'Mapa': streets, 'Satélite': satellite }, {}, { position: 'topright' }).addTo(mapInstance.current);
