@@ -1157,8 +1157,19 @@ function MapaTab({ clients, appointments, taskTypes, base, setBase, setAppointme
         // imagem disponível em vez de mostrar "Map data not yet available".
         attribution: 'Tiles &copy; Esri', maxNativeZoom: 17, maxZoom: 19,
       });
+      // Satélite com ruas: foto + camadas transparentes com ruas/rodovias e nomes de bairros e cidades
+      const esriRef = (name) => L.tileLayer(`https://server.arcgisonline.com/ArcGIS/rest/services/Reference/${name}/MapServer/tile/{z}/{y}/{x}`, {
+        maxNativeZoom: 17, maxZoom: 19,
+      });
+      const hybrid = L.layerGroup([
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          attribution: 'Tiles &copy; Esri', maxNativeZoom: 17, maxZoom: 19,
+        }),
+        esriRef('World_Transportation'),
+        esriRef('World_Boundaries_and_Places'),
+      ]);
       streets.addTo(mapInstance.current);
-      L.control.layers({ 'Mapa': streets, 'Satélite': satellite }, {}, { position: 'topright' }).addTo(mapInstance.current);
+      L.control.layers({ 'Mapa': streets, 'Satélite com ruas': hybrid, 'Satélite': satellite }, {}, { position: 'topright' }).addTo(mapInstance.current);
     }
     const map = mapInstance.current;
     map.eachLayer(layer => { if(layer.options?.fleet) return; if(layer instanceof L.Marker || layer instanceof L.Polyline || layer instanceof L.GeoJSON) map.removeLayer(layer); });
