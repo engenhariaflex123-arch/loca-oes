@@ -194,7 +194,7 @@ export default function App(){
     <div className="w-full min-h-screen bg-neutral-100 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100">
       <div className="border-b border-neutral-200 dark:border-neutral-800 px-6 py-4 flex items-center justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <img src="/logo.png" alt="Logo da empresa" className="h-16 w-auto" />
+          <img src="/logo.png" alt="Flex Locações" className="h-16 w-auto" />
           <div>
             <div className="text-xs font-mono uppercase tracking-widest text-brand-500">Plataforma de logística</div>
             <h1 className="text-2xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">Locações, agenda e equipes</h1>
@@ -1994,7 +1994,7 @@ function AuthScreen({ onSuccess, theme, onToggleTheme }){
         </button>
       )}
       <div className="w-full max-w-sm bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-6">
-        <img src="/logo.png" alt="Logo da empresa" className="h-20 w-auto mb-4" />
+        <img src="/logo.png" alt="Flex Locações" className="h-20 w-auto mb-4" />
         <div className="text-xs font-mono uppercase tracking-widest text-brand-500 mb-1">Plataforma de logística</div>
         <h1 className="text-xl font-semibold mb-5 text-neutral-900 dark:text-neutral-50">
           {mode === 'login' ? 'Entrar' : 'Criar conta'}
