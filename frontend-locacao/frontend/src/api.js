@@ -90,6 +90,9 @@ export const api = {
     update: (id, data) => request(`/api/assets/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     setStatus: (id, status, notes) => request(`/api/assets/${id}/status`, { method: 'PUT', body: JSON.stringify({ status, notes }) }),
     history: (id) => request(`/api/assets/${id}/history`),
+    usage: (params) => request('/api/assets/usage' + qs(params)),
+    usageOf: (id) => request(`/api/assets/${id}/usage`),
+    service: (id, notes) => request(`/api/assets/${id}/service`, { method: 'POST', body: JSON.stringify({ notes }) }),
     remove: (id) => request(`/api/assets/${id}`, { method: 'DELETE' }),
   },
   rentals: {

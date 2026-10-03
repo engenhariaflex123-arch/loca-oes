@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { pool } from '../db.js';
 import { logAudit } from '../audit.js';
 import { uid, HttpError, withTransaction } from '../utils.js';
+import { computeUsage } from '../services/usage.js';
 
 const router = Router();
 const STATUSES = ['disponivel', 'locado', 'higienizacao', 'manutencao', 'extraviado', 'baixado'];
@@ -39,6 +40,31 @@ router.get('/', async (req, res) => {
     params
   );
   res.json(rows.map(toAsset));
+});
+
+// Contador de uso de todas as unidades (?productTypeId=). Sem o detalhe por locação, para ficar leve.
+router.get('/usage', async (req, res) => {
+  const list = await computeUsage({ productTypeId: req.query.productTypeId || null });
+  res.json(list.map(({ history, ...rest }) => rest));
+});
+
+// Contador de uma unidade, com cada locação em que ela foi
+router.get('/:id/usage', async (req, res) => {
+  const [u] = await computeUsage({ assetId: req.params.id });
+  if(!u) throw new HttpError(404, 'Unidade não encontrada.');
+  res.json(u);
+});
+
+// Registrar revisão preventiva feita (zera o contador "desde a última revisão")
+router.post('/:id/service', async (req, res) => {
+  const { rows: [a] } = await pool.query('SELECT code FROM assets WHERE id=$1', [req.params.id]);
+  if(!a) throw new HttpError(404, 'Unidade não encontrada.');
+  await pool.query(
+    `INSERT INTO asset_movements (id, asset_id, movement, condition, notes) VALUES ($1,$2,'manutencao','ok',$3)`,
+    [uid(), req.params.id, `Revisão preventiva${req.body.notes ? `: ${req.body.notes}` : ''}`]
+  );
+  await logAudit(req.user, 'update', 'asset', `${a.code} — revisão registrada`);
+  res.status(201).json({ ok: true });
 });
 
 // Resumo para o painel: quantas unidades de cada produto em cada status

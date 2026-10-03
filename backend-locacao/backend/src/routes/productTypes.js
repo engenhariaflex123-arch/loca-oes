@@ -12,6 +12,7 @@ function toProductType(r){
     dailyPrice: r.daily_price,
     setupMinutes: r.setup_minutes, teardownMinutes: r.teardown_minutes,
     cleaningIntervalDays: r.cleaning_interval_days,
+    serviceEveryUses: r.service_every_uses, serviceEveryDays: r.service_every_days,
     turnaroundDays: r.turnaround_days,
     active: r.active,
   };
@@ -28,6 +29,7 @@ function params(b){
     toNumber(b.setupMinutes) ?? 30, toNumber(b.teardownMinutes) ?? 30,
     toNumber(b.cleaningIntervalDays), toNumber(b.turnaroundDays) ?? 1,
     b.active !== false,
+    toNumber(b.serviceEveryUses), toNumber(b.serviceEveryDays),
   ];
 }
 
@@ -44,8 +46,9 @@ router.post('/', async (req, res) => {
   const id = req.body.id || uid();
   const { rows } = await pool.query(
     `INSERT INTO product_types
-       (id, category, name, daily_price, setup_minutes, teardown_minutes, cleaning_interval_days, turnaround_days, active)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+       (id, category, name, daily_price, setup_minutes, teardown_minutes, cleaning_interval_days, turnaround_days, active,
+        service_every_uses, service_every_days)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
     [id, ...params(req.body)]
   );
   await logAudit(req.user, 'create', 'product_type', req.body.name);
@@ -56,8 +59,8 @@ router.put('/:id', async (req, res) => {
   validate(req.body);
   const { rows } = await pool.query(
     `UPDATE product_types SET category=$1, name=$2, daily_price=$3, setup_minutes=$4, teardown_minutes=$5,
-       cleaning_interval_days=$6, turnaround_days=$7, active=$8
-     WHERE id=$9 RETURNING *`,
+       cleaning_interval_days=$6, turnaround_days=$7, active=$8, service_every_uses=$9, service_every_days=$10
+     WHERE id=$11 RETURNING *`,
     [...params(req.body), req.params.id]
   );
   if(!rows[0]) throw new HttpError(404, 'Produto não encontrado.');

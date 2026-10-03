@@ -278,3 +278,9 @@ SELECT substring(os_code from 4 for 4)::int, MAX(substring(os_code from 9)::int)
   FROM rentals WHERE os_code ~ '^OS-\d{4}-\d+$'
  GROUP BY 1
 ON CONFLICT (year) DO UPDATE SET last = GREATEST(os_counter.last, EXCLUDED.last);
+
+-- =====================================================================
+-- CONTADOR DE USO: revisão preventiva por produto (opcional)
+-- =====================================================================
+ALTER TABLE product_types ADD COLUMN IF NOT EXISTS service_every_uses INTEGER; -- revisar a cada N locações
+ALTER TABLE product_types ADD COLUMN IF NOT EXISTS service_every_days INTEGER; -- ou a cada N dias locada

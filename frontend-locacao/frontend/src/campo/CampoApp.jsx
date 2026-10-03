@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Navigation, Phone, RefreshCw, LogOut, Camera, Images, X, Check, AlertTriangle, Plus, Eye, EyeOff, MapPin, KeyRound } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { ChevronLeft, ChevronRight, Navigation, Phone, RefreshCw, LogOut, Camera, Images, X, Check, AlertTriangle, Plus, Eye, EyeOff, MapPin, KeyRound, ScanLine } from 'lucide-react';
 import { campoApi, getSession, saveSession } from './campoApi.js';
 import { compressImage, SignaturePad } from './captura.jsx';
+import { Scanner } from './Scanner.jsx';
 import { TEAMS, teamOf, kindLabel } from '../constants.js';
 
 // ---------------------------------------------------------------------------
@@ -477,24 +478,54 @@ function Concluir({ stop, team, onCancel, onDone, onExpired }){
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
 
+  const [scanning, setScanning] = useState(false);
+  // Códigos já registrados nesta tela (ref = atualização imediata, para leituras em sequência)
+  const seen = useRef(new Set(isOut ? [] : atSite.map(a => a.code)));
+  const scanned = useRef(new Set());
+  const items = stop.items || [];
+
+  // Registra um código (lido pela câmera ou digitado). Devolve { ok, message } para o leitor.
+  const registerCode = async (raw) => {
+    const c = String(raw || '').trim().toUpperCase();
+    if(!c) return { ok: false, message: 'Código vazio.' };
+
+    if(isBack && seen.current.has(c)){
+      // Retirada: unidade que já constava no local → conferida
+      if(scanned.current.has(c)) return { ok: false, message: `${c} já foi conferida.` };
+      scanned.current.add(c);
+      setBackUnits(prev => prev.map(u => u.code === c ? { ...u, checked: true, scanned: true } : u));
+      return { ok: true, message: `✓ ${c} conferida (${scanned.current.size} de ${seen.current.size})` };
+    }
+    if(isOut && seen.current.has(c)) return { ok: false, message: `${c} já foi lida.` };
+
+    let a;
+    try{ a = await campoApi.asset(c); }
+    catch(err){
+      if(err.expired){ onExpired(); return { ok: false, message: 'Sessão expirada.' }; }
+      return { ok: false, message: err.status === 404 ? `${c} não está cadastrada. Confira a etiqueta.` : err.message };
+    }
+    if(seen.current.has(a.code)) return { ok: false, message: `${a.code} já está na lista.` };
+    seen.current.add(a.code);
+    scanned.current.add(a.code);
+    if(isOut){
+      setOutUnits(prev => [...prev, { code: a.code, productTypeId: a.productTypeId, productName: a.productName, status: a.status }]);
+      const item = items.find(i => i.productTypeId === a.productTypeId);
+      if(!item) return { ok: false, message: `⚠ ${a.code} (${a.productName}) não faz parte desta locação. Adicionada; toque no X para tirar.` };
+      return { ok: true, message: `✓ ${a.code} · ${a.productName}` };
+    }
+    setBackUnits(prev => [...prev, { code: a.code, productName: a.productName, checked: true, condition: 'ok', notes: '', extra: true, scanned: true }]);
+    return { ok: true, message: `✓ ${a.code} recolhida (não constava neste local)` };
+  };
+  const registerRef = useRef(registerCode);
+  registerRef.current = registerCode;
+
   const addCode = async () => {
-    const c = code.trim().toUpperCase();
-    if(!c) return;
-    setCodeMsg('');
-    const list = isOut ? outUnits : backUnits;
-    if(list.some(u => u.code === c)){ setCodeMsg(`${c} já está na lista.`); setCode(''); return; }
-    setChecking(true);
-    try{
-      const a = await campoApi.asset(c);
-      if(isOut) setOutUnits(prev => [...prev, { code: a.code, productTypeId: a.productTypeId, productName: a.productName, status: a.status }]);
-      else setBackUnits(prev => [...prev, { code: a.code, productName: a.productName, checked: true, condition: 'ok', notes: '', extra: true }]);
-      setCode('');
-    }catch(err){
-      if(err.expired) return onExpired();
-      if(err.status === 404){
-        setCodeMsg(`${c} não está cadastrado. Confira a etiqueta.`);
-      }else setCodeMsg(err.message);
-    }finally{ setChecking(false); }
+    if(!code.trim()) return;
+    setCodeMsg(''); setChecking(true);
+    const r = await registerCode(code);
+    setChecking(false);
+    if(r.ok) setCode('');
+    if(!r.ok || r.message.startsWith('⚠')) setCodeMsg(r.message.replace(/^✓ /, ''));
   };
 
   const addPhotos = async (files) => {
@@ -509,6 +540,16 @@ function Concluir({ stop, team, onCancel, onDone, onExpired }){
   const outCount = {};
   outUnits.forEach(u => { outCount[u.productTypeId] = (outCount[u.productTypeId] || 0) + 1; });
   const outMissing = isOut ? (stop.items || []).filter(i => (outCount[i.productTypeId] || 0) < i.quantity) : [];
+  const totalWanted = (stop.items || []).reduce((n, i) => n + i.quantity, 0);
+  const scannedBack = backUnits.filter(u => u.scanned).length;
+  const unscannedChecked = backUnits.filter(u => u.checked && !u.scanned).length;
+  const scanProgress = isOut ? `Lidas: ${outUnits.length} de ${totalWanted}` : `Conferidas: ${scannedBack} de ${backUnits.length}`;
+  const scanButton = (
+    <button type="button" onClick={() => setScanning(true)}
+      className="w-full min-h-[56px] rounded-xl bg-brand-600 active:bg-brand-700 text-white text-lg font-semibold flex items-center justify-center gap-2 mb-3">
+      <ScanLine size={24}/> Ler etiquetas com a câmera
+    </button>
+  );
   const backMissing = isBack ? backUnits.filter(u => !u.checked) : [];
 
   const submit = async () => {
@@ -553,7 +594,7 @@ function Concluir({ stop, team, onCancel, onDone, onExpired }){
       {isOut && (
         <section className="rounded-xl bg-white p-4">
           <p className="font-semibold">Unidades entregues</p>
-          <p className="text-sm text-neutral-600 mb-3">Digite o código da etiqueta de cada unidade que ficou no local.</p>
+          <p className="text-sm text-neutral-600 mb-3">Leia a etiqueta (ou digite o código) de cada unidade que ficou no local.</p>
           <ul className="flex flex-col gap-1 mb-3">
             {(stop.items || []).map(i => {
               const have = outCount[i.productTypeId] || 0;
@@ -565,14 +606,15 @@ function Concluir({ stop, team, onCancel, onDone, onExpired }){
               );
             })}
           </ul>
-          <CodeInput code={code} setCode={setCode} onAdd={addCode} checking={checking} msg={codeMsg} />
+          {scanButton}
+          <CodeInput code={code} setCode={setCode} onAdd={addCode} checking={checking} msg={codeMsg} label="Ou digite o código" />
           {outUnits.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-3">
               {outUnits.map(u => (
                 <span key={u.code} className={`font-mono pl-3 pr-1 py-1 rounded-lg border flex items-center gap-1 ${(stop.items || []).some(i => i.productTypeId === u.productTypeId) ? 'bg-neutral-100 border-neutral-300' : 'bg-amber-50 border-amber-400'}`}
                   title={u.productName}>
                   {u.code}
-                  <button onClick={() => setOutUnits(prev => prev.filter(x => x.code !== u.code))} aria-label={`Tirar ${u.code}`} className="w-8 h-8 flex items-center justify-center text-neutral-500"><X size={16}/></button>
+                  <button onClick={() => { seen.current.delete(u.code); scanned.current.delete(u.code); setOutUnits(prev => prev.filter(x => x.code !== u.code)); }} aria-label={`Tirar ${u.code}`} className="w-8 h-8 flex items-center justify-center text-neutral-500"><X size={16}/></button>
                 </span>
               ))}
             </div>
@@ -586,7 +628,14 @@ function Concluir({ stop, team, onCancel, onDone, onExpired }){
       {isBack && (
         <section className="rounded-xl bg-white p-4">
           <p className="font-semibold">Unidades recolhidas</p>
-          <p className="text-sm text-neutral-600 mb-3">Desmarque o que não foi recolhido e informe o estado de cada uma.</p>
+          <p className="text-sm text-neutral-600 mb-3">Leia a etiqueta de cada unidade recolhida (ou desmarque o que ficou no local) e informe o estado.</p>
+          {scanButton}
+          {scannedBack > 0 && unscannedChecked > 0 && (
+            <button type="button" onClick={() => setBackUnits(prev => prev.map(u => u.scanned ? u : { ...u, checked: false }))}
+              className="w-full min-h-[48px] rounded-xl border-2 border-amber-400 bg-amber-50 text-amber-900 font-semibold mb-3">
+              {unscannedChecked === 1 ? 'Desmarcar a que não foi lida' : `Desmarcar as ${unscannedChecked} que não foram lidas`}
+            </button>
+          )}
           {backUnits.length === 0 && <p className="text-neutral-500 mb-3">Nenhuma unidade registrada neste local. Digite os códigos abaixo.</p>}
           <ul className="flex flex-col gap-3 mb-3">
             {backUnits.map((u, idx) => (
@@ -595,6 +644,7 @@ function Concluir({ stop, team, onCancel, onDone, onExpired }){
                   <input type="checkbox" checked={u.checked} className="w-6 h-6"
                     onChange={e => setBackUnits(prev => prev.map((x, i) => i === idx ? { ...x, checked: e.target.checked } : x))} />
                   <span className="font-mono text-lg font-semibold">{u.code}</span>
+                  {u.scanned && <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 shrink-0">lida ✓</span>}
                   <span className="text-sm text-neutral-600 truncate">{u.productName}</span>
                 </label>
                 {u.checked && (
@@ -617,7 +667,7 @@ function Concluir({ stop, team, onCancel, onDone, onExpired }){
               </li>
             ))}
           </ul>
-          <CodeInput code={code} setCode={setCode} onAdd={addCode} checking={checking} msg={codeMsg} label="Recolheu outra unidade? Digite o código" />
+          <CodeInput code={code} setCode={setCode} onAdd={addCode} checking={checking} msg={codeMsg} label="Ou digite o código" />
         </section>
       )}
 
@@ -685,6 +735,10 @@ function Concluir({ stop, team, onCancel, onDone, onExpired }){
 
       {error && <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-red-800" role="alert">{error}</div>}
       <button onClick={onCancel} className="text-neutral-600 underline self-center py-2">Cancelar</button>
+      {scanning && (
+        <Scanner title={`${kindLabel(stop.kind)} · ${stop.client?.name || ''}`} progress={scanProgress}
+          onCode={(c) => registerRef.current(c)} onClose={() => setScanning(false)} />
+      )}
     </Screen>
   );
 }
