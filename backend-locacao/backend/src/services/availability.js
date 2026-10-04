@@ -2,7 +2,11 @@
 // Uma locação ocupa a unidade de start_date até end_date + turnaround_days
 // (dias de higienização/vistoria depois que ela volta).
 
+// Locação sem data de término (mensal por prazo indeterminado) ocupa a unidade "até segunda ordem".
+const OPEN_END = '9999-12-31';
+
 export async function getAvailability(db, start, end, excludeRentalId = null){
+  end = end || OPEN_END;
   const { rows } = await db.query(
     `SELECT pt.id, pt.name, pt.category,
        (SELECT count(*)::int FROM assets a
@@ -15,7 +19,7 @@ export async function getAvailability(db, start, end, excludeRentalId = null){
           AND r.status IN ('confirmado', 'em_andamento')
           AND ($3::text IS NULL OR r.id <> $3::text)
           AND r.start_date <= ($2::date + COALESCE(pt.turnaround_days, 0))
-          AND (r.end_date + COALESCE(pt.turnaround_days, 0)) >= $1::date), 0) AS reserved
+          AND (COALESCE(r.end_date, DATE '9999-12-31') + COALESCE(pt.turnaround_days, 0)) >= $1::date), 0) AS reserved
      FROM product_types pt
      WHERE pt.active
      ORDER BY pt.category, pt.name`,

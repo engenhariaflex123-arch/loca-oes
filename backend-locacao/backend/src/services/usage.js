@@ -20,7 +20,7 @@ export async function computeUsage({ productTypeId = null, assetId = null } = {}
 
   const { rows: uses } = await pool.query(
     `SELECT ra.asset_id, ra.rental_id, ra.delivered_at, ra.returned_at, ra.return_condition,
-            r.start_date, r.end_date, r.os_code, c.name AS client_name,
+            r.start_date, r.end_date, r.os_code, r.billing, c.name AS client_name,
             (SELECT ri.unit_price FROM rental_items ri JOIN assets x ON x.id = ra.asset_id
               WHERE ri.rental_id = ra.rental_id AND ri.product_type_id = x.product_type_id LIMIT 1) AS unit_price
        FROM rental_assets ra
@@ -64,7 +64,8 @@ export async function computeUsage({ productTypeId = null, assetId = null } = {}
       cleaningsDone += cl;
       const price = u.unit_price != null ? Number(u.unit_price) : (a.daily_price != null ? Number(a.daily_price) : 0);
       // Diária × dias em que ESTA unidade ficou no local (não o período inteiro da locação)
-      revenue += price * d;
+      // No contrato mensal o preço é por mês: a diária equivalente é o valor mensal ÷ 30
+      revenue += (u.billing === 'mensal' ? price / 30 : price) * d;
       const oFrom = Math.max(from.getTime(), since90.getTime()), oTo = Math.min(to.getTime(), now.getTime());
       if(oTo > oFrom) occ += (oTo - oFrom) / DAY;
       if(!svc || from > svc){ usesSince++; }

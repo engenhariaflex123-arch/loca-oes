@@ -125,15 +125,16 @@ export async function buildOsPdf(rentalId, res, generatedBy){
         ['Responsável no local', [r.contact_name, r.contact_phone].filter(Boolean).join(' · ') || null]]);
   if(r.access_notes) row2([['Acesso', r.access_notes]]);
   row2([['Entrega / montagem', `${dmy(r.start_date)}${r.start_time ? ` às ${r.start_time}` : ''}`],
-        ['Retirada / desmontagem', `${dmy(r.end_date)}${r.end_time ? ` às ${r.end_time}` : ''}`],
+        ['Retirada / desmontagem', r.end_date ? `${dmy(r.end_date)}${r.end_time ? ` às ${r.end_time}` : ''}` : 'Prazo indeterminado (até o cliente pedir)'],
         ['Criada em', dt(r.created_at)]]);
   if(r.notes) row2([['Observações', r.notes]]);
 
   section('Itens');
-  table([{ label: 'Produto', w: W * 0.55 }, { label: 'Qtd.', w: W * 0.12, align: 'right' }, { label: 'Diária', w: W * 0.33, align: 'right' }],
+  const monthly = r.billing === 'mensal';
+  table([{ label: 'Produto', w: W * 0.55 }, { label: 'Qtd.', w: W * 0.12, align: 'right' }, { label: monthly ? 'Mensal por unidade' : 'Diária', w: W * 0.33, align: 'right' }],
     items.map(i => [i.name, i.quantity, brl(i.unit_price)]));
   need(20); doc.moveDown(0.3);
-  doc.font('b').fontSize(10).fillColor(TEXT).text(`Valor total: ${brl(r.total_value)}`, L, doc.y, { width: W, align: 'right' });
+  doc.font('b').fontSize(10).fillColor(TEXT).text(monthly ? `Locação mensal: ${brl(r.total_value)} por mês` : `Valor total: ${brl(r.total_value)}`, L, doc.y, { width: W, align: 'right' });
 
   // ----- Etapas -----
   section('Etapas');

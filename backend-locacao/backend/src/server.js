@@ -23,6 +23,7 @@ import rentalsRouter from './routes/rentals.js';
 import fleetRouter from './routes/fleet.js';
 import eventsRouter from './routes/events.js';
 import { startTracker } from './services/tracker.js';
+import { startRecurringJob } from './services/schedule.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -82,6 +83,7 @@ ensureSchema()
   .then(() => {
     app.listen(PORT, () => console.log(`API rodando na porta ${PORT}`));
     startTracker(); // acompanhamento automático das equipes (só age se o IOP GPS estiver configurado)
+    startRecurringJob(pool); // contratos mensais: mantém as limpezas das próximas semanas na Agenda
   })
   .catch(err => {
     console.error('Falha ao preparar o banco de dados:', err);

@@ -16,8 +16,12 @@ function summary(items){
   return items.map(i => `${i.quantity}x ${i.name}`).join(', ');
 }
 
+// Contrato mensal: as limpezas são criadas só até este horizonte e estendidas automaticamente
+export const MONTHLY_HORIZON_DAYS = 28;
+const weekday = (key) => new Date(key + 'T12:00:00Z').getUTCDay();
+
 // Monta o plano de visitas de uma locação (sem gravar nada)
-export function buildSchedule(rental, items){
+export function buildSchedule(rental, items, { horizon = null } = {}){
   const pick = it => ({ productTypeId: it.product_type_id, name: it.name, quantity: it.quantity });
   const groups = {};
   for(const it of items){
@@ -28,16 +32,35 @@ export function buildSchedule(rental, items){
   const plan = [];
   for(const [startKind, g] of Object.entries(groups)){
     plan.push({ kind: startKind, date: rental.start_date, items: g.items });
-    plan.push({ kind: g.end, date: rental.end_date, items: g.items });
+    // Mensal por prazo indeterminado: sem retirada até o cliente pedir
+    if(rental.end_date) plan.push({ kind: g.end, date: rental.end_date, items: g.items });
   }
 
-  // Limpezas periódicas: usa o menor intervalo entre os banheiros da locação
   const toilets = items.filter(i => i.category === 'banheiro');
-  const intervals = toilets.map(i => i.cleaning_interval_days).filter(n => n > 0);
-  if(intervals.length){
-    const every = Math.min(...intervals);
-    for(let d = addDays(rental.start_date, every); d < rental.end_date; d = addDays(d, every)){
-      plan.push({ kind: 'limpeza', date: d, items: toilets.map(pick) });
+  const monthly = rental.billing === 'mensal';
+  // Até onde criar limpezas: fim do contrato e, no mensal, no máximo o horizonte (as próximas semanas)
+  let limit = rental.end_date || null;                 // exclusivo: a limpeza fica antes da retirada
+  if(monthly){
+    const h = horizon || addDays(today(), MONTHLY_HORIZON_DAYS);
+    const hEx = addDays(h, 1);
+    limit = !limit || hEx < limit ? hEx : limit;
+  }
+  if(toilets.length && limit){
+    const days = Array.isArray(rental.cleaning_weekdays) ? rental.cleaning_weekdays.map(Number) : [];
+    if(monthly && days.length){
+      // Mensal: limpezas nos dias da semana combinados (ex.: segunda e quinta)
+      for(let d = addDays(rental.start_date, 1); d < limit; d = addDays(d, 1)){
+        if(days.includes(weekday(d))) plan.push({ kind: 'limpeza', date: d, items: toilets.map(pick) });
+      }
+    }else{
+      // Diária (ou mensal sem dias definidos): a cada N dias, pelo menor intervalo dos banheiros
+      const intervals = toilets.map(i => i.cleaning_interval_days).filter(n => n > 0);
+      if(intervals.length){
+        const every = Math.min(...intervals);
+        for(let d = addDays(rental.start_date, every); d < limit; d = addDays(d, every)){
+          plan.push({ kind: 'limpeza', date: d, items: toilets.map(pick) });
+        }
+      }
     }
   }
 
@@ -109,4 +132,46 @@ export async function generateAppointments(db, rentalId){
     created++;
   }
   return created;
+}
+
+// Contrato mensal: acrescenta as limpezas que faltam até o horizonte (próximas semanas).
+// Só INSERE datas novas; nunca apaga nem recria visitas existentes (preserva equipe, histórico e eventos).
+// As limpezas novas herdam a equipe da limpeza mais recente do contrato.
+export async function extendRecurring(db, rentalId){
+  const { rows: [rental] } = await db.query('SELECT * FROM rentals WHERE id=$1', [rentalId]);
+  if(!rental || rental.billing !== 'mensal' || !['confirmado', 'em_andamento'].includes(rental.status)) return 0;
+  const { rows: items } = await db.query(
+    `SELECT ri.product_type_id, ri.quantity, pt.name, pt.category, pt.cleaning_interval_days
+       FROM rental_items ri JOIN product_types pt ON pt.id = ri.product_type_id WHERE ri.rental_id = $1`, [rentalId]);
+  const { rows: existing } = await db.query(
+    `SELECT date, team_id FROM appointments WHERE rental_id=$1 AND kind='limpeza' ORDER BY date DESC`, [rentalId]);
+  const have = new Set(existing.map(e => String(e.date)));
+  const team = existing.find(e => e.team_id)?.team_id || rental.team_id || null;
+  const { rows: s } = await db.query(`SELECT value FROM settings WHERE key='default_tasks_by_kind'`);
+  const tasks = s[0]?.value?.limpeza || [];
+  const now = today();
+  let created = 0;
+  for(const p of buildSchedule(rental, items)){
+    if(p.kind !== 'limpeza' || p.date < now || have.has(p.date)) continue;
+    await db.query(
+      `INSERT INTO appointments (id, date, client_id, team_id, task_ids, notes, status, rental_id, site_id, kind, items, auto_generated)
+       VALUES ($1,$2,$3,$4,$5,$6,'pendente',$7,$8,'limpeza',$9,true)`,
+      [uid(), p.date, rental.client_id, team, JSON.stringify(tasks), p.notes, rental.id, rental.site_id, JSON.stringify(p.items)]);
+    created++;
+  }
+  return created;
+}
+
+// Roda ao subir o servidor e a cada 6 horas para todos os contratos mensais ativos
+export function startRecurringJob(pool){
+  const run = async () => {
+    try{
+      const { rows } = await pool.query(`SELECT id FROM rentals WHERE billing='mensal' AND status IN ('confirmado','em_andamento')`);
+      let total = 0;
+      for(const r of rows) total += await extendRecurring(pool, r.id);
+      if(total) console.log(`Contratos mensais: ${total} limpeza(s) nova(s) na Agenda.`);
+    }catch(err){ console.error('Contratos mensais:', err.message); }
+  };
+  setTimeout(run, 15000);
+  setInterval(run, 6 * 3600 * 1000);
 }

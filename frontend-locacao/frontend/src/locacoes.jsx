@@ -3,7 +3,7 @@ import { Plus, X, Trash2, Edit2, MapPinned, AlertTriangle, Check, Search, Copy, 
 import { api } from './api.js';
 import {
   teamOf, kindLabel, CATEGORY_LABEL, RENTAL_STATUS, APPT_STATUS, ASSET_STATUS,
-  fmtBRL, fmtDate, fmtShort, daysInclusive, ui,
+  fmtBRL, fmtDate, fmtShort, daysInclusive, ui, WEEKDAYS_SHORT, WEEK_ORDER, weekdaysText,
 } from './constants.js';
 
 // ---------------------------------------------------------------------------
@@ -44,6 +44,14 @@ function ShortagesBox({ shortages, title }){
       </ul>
     </div>
   );
+}
+
+// "15/08 a 20/08" ou, no contrato mensal sem fim, "desde 15/08"
+export function periodText(r, full = false){
+  const f = full ? fmtDate : fmtShort;
+  const st = `${f(r.startDate)}${r.startTime ? ` ${full ? 'às ' : ''}${r.startTime}` : ''}`;
+  if(!r.endDate) return `desde ${st}`;
+  return `${st} a ${f(r.endDate)}${r.endTime ? ` ${full ? 'às ' : ''}${r.endTime}` : ''}`;
 }
 
 function itemsSummary(items){
@@ -135,6 +143,7 @@ export function LocacoesTab({ clients, productTypes, sites, setSites, reloadAppo
         )}
       </div>
 
+      <PendingBilling onOpen={(id) => setDetail({ id })} />
       {loadError && <p className="text-sm text-red-500">{loadError}</p>}
       {!rentals && !loadError && <p className="text-sm text-neutral-500 font-mono">Carregando locações...</p>}
       {rentals && visible.length === 0 && (
@@ -157,15 +166,16 @@ export function LocacoesTab({ clients, productTypes, sites, setSites, reloadAppo
                 {r.osCode && <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400">{r.osCode}</span>}
                 <span className="text-sm font-medium">{r.clientName}</span>
                 {r.siteName && <span className="text-sm text-neutral-500">em {r.siteName}</span>}
+                {r.billing === 'mensal' && <span className={`${ui.badge} bg-violet-100 text-violet-800 dark:bg-violet-950/60 dark:text-violet-300`}>Mensal</span>}
               </div>
               <div className="text-xs text-neutral-500 mt-0.5 truncate">{itemsSummary(r.items)}</div>
             </div>
             <div className="flex sm:flex-col sm:items-end items-center gap-2 sm:gap-1">
               <StatusBadge meta={RENTAL_STATUS[r.status]} />
               <span className="text-xs font-mono text-neutral-600 dark:text-neutral-400">
-                {fmtShort(r.startDate)}{r.startTime ? ` ${r.startTime}` : ''} a {fmtShort(r.endDate)}{r.endTime ? ` ${r.endTime}` : ''}
+                {periodText(r)}
               </span>
-              <span className="text-xs text-neutral-500">{fmtBRL(r.totalValue)}</span>
+              <span className="text-xs text-neutral-500">{fmtBRL(r.totalValue)}{r.billing === 'mensal' ? '/mês' : ''}</span>
             </div>
           </button>
         ))}
@@ -210,6 +220,9 @@ function RentalFormModal({ rental, clients, productTypes, sites, setSites, onClo
   const [newSite, setNewSite] = useState(null);
   const [startDate, setStartDate] = useState(rental?.startDate || '');
   const [endDate, setEndDate] = useState(rental?.endDate || '');
+  const [billing, setBilling] = useState(rental?.billing || 'diaria');
+  const [openEnded, setOpenEnded] = useState(rental ? rental.billing === 'mensal' && !rental.endDate : true);
+  const [weekdays, setWeekdays] = useState(rental?.cleaningWeekdays?.length ? rental.cleaningWeekdays : [1, 4]);
   const [startTime, setStartTime] = useState(rental?.startTime || '');
   const [endTime, setEndTime] = useState(rental?.endTime || '');
   const [items, setItems] = useState(() =>
@@ -226,17 +239,21 @@ function RentalFormModal({ rental, clients, productTypes, sites, setSites, onClo
 
   const clientSites = sites.filter(s => s.clientId === clientId);
   const productById = useMemo(() => Object.fromEntries(productTypes.map(p => [p.id, p])), [productTypes]);
-  const datesOk = startDate && endDate && endDate >= startDate;
-  const days = datesOk ? daysInclusive(startDate, endDate) : 0;
+  const monthly = billing === 'mensal';
+  const effEnd = monthly && openEnded ? '' : endDate;
+  const datesOk = !!startDate && (monthly && openEnded ? true : !!endDate && endDate >= startDate);
+  const days = datesOk && effEnd ? daysInclusive(startDate, effEnd) : 0;
+  // Sem data de término, confere o estoque no primeiro ano de contrato
+  const availEnd = effEnd || (startDate ? new Date(Date.parse(startDate + 'T12:00:00Z') + 364 * 86400000).toISOString().slice(0, 10) : '');
 
   useEffect(() => {
     if(!datesOk){ setAvailability(null); return; }
     let alive = true;
-    api.rentals.availability(startDate, endDate, rental?.id)
+    api.rentals.availability(startDate, availEnd, rental?.id)
       .then(list => { if(alive) setAvailability(Object.fromEntries(list.map(a => [a.productTypeId, a]))); })
       .catch(() => { if(alive) setAvailability(null); });
     return () => { alive = false; };
-  }, [startDate, endDate]);
+  }, [startDate, availEnd]);
 
   // Quantidade pedida por produto (soma se o mesmo produto aparecer em duas linhas)
   const requestedByProduct = {};
@@ -244,9 +261,11 @@ function RentalFormModal({ rental, clients, productTypes, sites, setSites, onClo
 
   const priceOf = (i) => {
     const typed = String(i.unitPrice).replace(',', '.');
-    return typed !== '' && !isNaN(Number(typed)) ? Number(typed) : (productById[i.productTypeId]?.dailyPrice || 0);
+    const p = productById[i.productTypeId];
+    return typed !== '' && !isNaN(Number(typed)) ? Number(typed) : ((monthly ? p?.monthlyPrice : p?.dailyPrice) || 0);
   };
-  const computedTotal = items.reduce((sum, i) => sum + priceOf(i) * (Number(i.quantity) || 0) * days, 0);
+  // Diária: total do período. Mensal: valor de um mês.
+  const computedTotal = items.reduce((sum, i) => sum + priceOf(i) * (Number(i.quantity) || 0) * (monthly ? 1 : days), 0);
 
   const updateItem = (idx, patch) => setItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it));
   const removeItem = (idx) => setItems(prev => prev.filter((_, i) => i !== idx));
@@ -265,7 +284,8 @@ function RentalFormModal({ rental, clients, productTypes, sites, setSites, onClo
         finalSiteId = created.id;
       }
       const payload = {
-        clientId, siteId: finalSiteId, startDate, endDate, startTime: startTime || null, endTime: endTime || null, notes,
+        clientId, siteId: finalSiteId, startDate, endDate: effEnd || null, startTime: startTime || null, endTime: effEnd ? (endTime || null) : null, notes,
+        billing, cleaningWeekdays: monthly ? weekdays : null,
         items: validItems.map(i => ({ productTypeId: i.productTypeId, quantity: Number(i.quantity), unitPrice: i.unitPrice })),
         totalValue: totalOverride || undefined,
       };
@@ -284,8 +304,9 @@ function RentalFormModal({ rental, clients, productTypes, sites, setSites, onClo
     <Modal title={title} onClose={onClose} size="lg" footer={
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="text-sm">
-          {days > 0 && <span className="text-neutral-500">{days} {days === 1 ? 'dia' : 'dias'} · </span>}
+          {!monthly && days > 0 && <span className="text-neutral-500">{days} {days === 1 ? 'dia' : 'dias'} · </span>}
           <span className="font-medium">{fmtBRL(totalOverride ? Number(String(totalOverride).replace(',', '.')) : computedTotal)}</span>
+          {monthly && <span className="text-neutral-500"> por mês</span>}
         </div>
         <div className="flex gap-2">
           <button onClick={onClose} className={ui.secondary}>Cancelar</button>
@@ -296,6 +317,18 @@ function RentalFormModal({ rental, clients, productTypes, sites, setSites, onClo
       </div>
     }>
       <div className="flex flex-col gap-5">
+        <div>
+          <p className={ui.label}>Tipo de locação</p>
+          <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Tipo de locação">
+            {[['diaria', 'Diária', 'Eventos: cobra por dia, com data de retirada'], ['mensal', 'Mensal', 'Obras e contratos: valor fixo por mês']].map(([id, label, hint]) => (
+              <button key={id} type="button" role="radio" aria-checked={billing === id} onClick={() => setBilling(id)}
+                className={`text-left px-3 py-2 rounded-lg border-2 ${billing === id ? 'border-brand-500 bg-brand-50 dark:bg-brand-950/40' : 'border-neutral-200 dark:border-neutral-700'}`}>
+                <span className="text-sm font-medium block">{label}</span>
+                <span className="text-xs text-neutral-500">{hint}</span>
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
             <label className={ui.label} htmlFor="rf-client">Cliente</label>
@@ -327,19 +360,47 @@ function RentalFormModal({ rental, clients, productTypes, sites, setSites, onClo
           )}
 
           <div>
-            <label className={ui.label} htmlFor="rf-start">Entrega / montagem</label>
+            <label className={ui.label} htmlFor="rf-start">{monthly ? 'Início do contrato (entrega)' : 'Entrega / montagem'}</label>
             <div className="flex gap-2">
               <input id="rf-start" type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className={`${ui.input} flex-1 min-w-0`} />
               <input type="time" aria-label="Horário combinado para a entrega" value={startTime} onChange={e => setStartTime(e.target.value)} className={`${ui.input} w-28`} />
             </div>
           </div>
           <div>
-            <label className={ui.label} htmlFor="rf-end">Retirada / desmontagem</label>
-            <div className="flex gap-2">
-              <input id="rf-end" type="date" value={endDate} min={startDate || undefined} onChange={e => setEndDate(e.target.value)} className={`${ui.input} flex-1 min-w-0`} />
-              <input type="time" aria-label="Horário combinado para a retirada" value={endTime} onChange={e => setEndTime(e.target.value)} className={`${ui.input} w-28`} />
-            </div>
+            <label className={ui.label} htmlFor="rf-end">{monthly ? 'Término do contrato' : 'Retirada / desmontagem'}</label>
+            {monthly && (
+              <label className="flex items-center gap-2 text-sm mb-1.5">
+                <input type="checkbox" checked={openEnded} onChange={e => setOpenEnded(e.target.checked)} />
+                Prazo indeterminado (até o cliente pedir a retirada)
+              </label>
+            )}
+            {!(monthly && openEnded) && (
+              <div className="flex gap-2">
+                <input id="rf-end" type="date" value={endDate} min={startDate || undefined} onChange={e => setEndDate(e.target.value)} className={`${ui.input} flex-1 min-w-0`} />
+                <input type="time" aria-label="Horário combinado para a retirada" value={endTime} onChange={e => setEndTime(e.target.value)} className={`${ui.input} w-28`} />
+              </div>
+            )}
           </div>
+          {monthly && (
+            <div className="sm:col-span-2">
+              <p className={ui.label}>Limpezas dos banheiros</p>
+              <div className="flex gap-1.5 flex-wrap" role="group" aria-label="Dias da semana das limpezas">
+                {WEEK_ORDER.map(d => {
+                  const on = weekdays.includes(d);
+                  return (
+                    <button key={d} type="button" aria-pressed={on}
+                      onClick={() => setWeekdays(w => on ? w.filter(x => x !== d) : [...w, d])}
+                      className={`w-12 py-1.5 rounded text-sm border-2 ${on ? 'border-brand-500 bg-brand-600 text-white' : 'border-neutral-300 dark:border-neutral-700 text-neutral-600 dark:text-neutral-300'}`}>
+                      {WEEKDAYS_SHORT[d]}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-neutral-500 mt-1">
+                {weekdays.length ? `Toda ${weekdaysText(weekdays)}. A Agenda mantém sempre as próximas 4 semanas e vai acrescentando sozinha.` : 'Sem dias marcados: usa o intervalo de limpeza do cadastro do produto.'}
+              </p>
+            </div>
+          )}
           <p className="text-xs text-neutral-500 sm:col-span-2 -mt-1 flex items-center gap-1"><Clock size={12}/> Horário combinado com o cliente (opcional). Ele vai para a Agenda e para o app da equipe.</p>
           {startDate && endDate && endDate < startDate && (
             <p className="text-xs text-red-500 sm:col-span-2">A retirada não pode ser antes da entrega.</p>
@@ -368,17 +429,17 @@ function RentalFormModal({ rental, clients, productTypes, sites, setSites, onClo
                       </select>
                       {avail && (
                         <p className={`text-xs mt-1 ${short ? 'text-red-500 font-medium' : 'text-neutral-500'}`}>
-                          {Math.max(avail.available, 0)} livres de {avail.total} nesse período{short ? ' (não dá)' : ''}
+                          {Math.max(avail.available, 0)} livres de {avail.total} {monthly && openEnded ? 'no 1º ano de contrato' : 'nesse período'}{short ? ' (não dá)' : ''}
                         </p>
                       )}
                     </div>
                     <input aria-label="Quantidade" type="number" min="1" value={it.quantity}
                       onChange={e => updateItem(idx, { quantity: e.target.value })}
                       className={`${ui.input} w-full text-center`} />
-                    <input aria-label="Diária por unidade" value={it.unitPrice}
-                      placeholder={product?.dailyPrice != null ? `${product.dailyPrice}` : 'Diária'}
+                    <input aria-label={monthly ? 'Valor mensal por unidade' : 'Diária por unidade'} value={it.unitPrice}
+                      placeholder={monthly ? (product?.monthlyPrice != null ? `${product.monthlyPrice}/mês` : 'Mensal') : (product?.dailyPrice != null ? `${product.dailyPrice}` : 'Diária')}
                       onChange={e => updateItem(idx, { unitPrice: e.target.value })}
-                      className={`${ui.input} w-full`} title="Diária por unidade (vazio = preço do catálogo)" />
+                      className={`${ui.input} w-full`} title={monthly ? 'Valor mensal por unidade (vazio = preço mensal do catálogo)' : 'Diária por unidade (vazio = preço do catálogo)'} />
                     <button onClick={() => removeItem(idx)} disabled={items.length === 1} aria-label="Remover item"
                       className="p-2 text-neutral-500 hover:text-red-400 disabled:opacity-30"><Trash2 size={14}/></button>
                   </div>
@@ -392,7 +453,7 @@ function RentalFormModal({ rental, clients, productTypes, sites, setSites, onClo
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <label className={ui.label} htmlFor="rf-total">Valor fechado (opcional)</label>
+            <label className={ui.label} htmlFor="rf-total">{monthly ? 'Valor mensal fechado (opcional)' : 'Valor fechado (opcional)'}</label>
             <input id="rf-total" value={totalOverride} onChange={e => setTotalOverride(e.target.value)}
               placeholder={`Calculado: ${fmtBRL(computedTotal)}`} className={`${ui.input} w-full`} />
           </div>
@@ -419,6 +480,12 @@ export function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit,
   const [shortages, setShortages] = useState(initialShortages?.length ? initialShortages : null);
   const [missing, setMissing] = useState(null);
   const [notice, setNotice] = useState('');
+  const [pickup, setPickup] = useState(null); // { date, time } enquanto o formulário de retirada está aberto
+  const savePickup = () => run(async () => {
+    const r = await api.rentals.requestPickup(rentalId, pickup.date, pickup.time || null);
+    setPickup(null);
+    return r;
+  }, r => `Retirada agendada para ${fmtDate(r.endDate)}${r.endTime ? ` às ${r.endTime}` : ''}. Limpezas depois dessa data foram removidas da Agenda.`);
 
   const [history, setHistory] = useState(null);
   const load = async () => {
@@ -484,7 +551,8 @@ export function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit,
     );
   }
 
-  const days = daysInclusive(rental.startDate, rental.endDate);
+  const days = rental.endDate ? daysInclusive(rental.startDate, rental.endDate) : null;
+  const monthly = rental.billing === 'mensal';
   const atSite = rental.assets.filter(a => a.deliveredAt && !a.returnedAt);
   const editable = !readOnly && ['orcamento', 'confirmado', 'em_andamento'].includes(rental.status);
 
@@ -516,6 +584,11 @@ export function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit,
             {editable && (
               <button onClick={() => onEdit(rental)} disabled={busy} className={`${ui.secondary} flex items-center gap-1`}><Edit2 size={14}/> Editar</button>
             )}
+            {monthly && ['confirmado', 'em_andamento'].includes(rental.status) && (
+              <button onClick={() => setPickup({ date: rental.endDate || '', time: rental.endTime || '' })} disabled={busy} className={ui.secondary}>
+                {rental.endDate ? 'Mudar data da retirada' : 'Pedir retirada'}
+              </button>
+            )}
             {rental.status === 'em_andamento' && !missing && (
               <button onClick={() => close()} disabled={busy} className={ui.secondary}>Encerrar locação</button>
             )}
@@ -533,18 +606,40 @@ export function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit,
             {rental.siteAddress && <p className="text-xs text-neutral-500">{rental.siteAddress}</p>}
           </div>
           <div>
-            <p className={ui.label}>Período</p>
-            <p>{fmtDate(rental.startDate)}{rental.startTime ? ` às ${rental.startTime}` : ''} a {fmtDate(rental.endDate)}{rental.endTime ? ` às ${rental.endTime}` : ''}</p>
-            <p className="text-xs text-neutral-500">{days} {days === 1 ? 'dia' : 'dias'}</p>
+            <p className={ui.label}>{monthly ? 'Contrato mensal' : 'Período'}</p>
+            <p>{periodText(rental, true)}</p>
+            <p className="text-xs text-neutral-500">
+              {monthly ? (rental.endDate ? `termina em ${fmtDate(rental.endDate)}` : 'prazo indeterminado') : `${days} ${days === 1 ? 'dia' : 'dias'}`}
+              {monthly && rental.cleaningWeekdays?.length > 0 && ` · limpezas ${weekdaysText(rental.cleaningWeekdays)}`}
+            </p>
           </div>
           <div>
             <p className={ui.label}>Valor</p>
-            <p className="font-medium">{fmtBRL(rental.totalValue)}</p>
+            <p className="font-medium">{fmtBRL(rental.totalValue)}{monthly && <span className="font-normal text-neutral-500"> por mês</span>}</p>
 
           </div>
         </div>
 
         {history && <StageBar stages={history.stages} />}
+
+        {pickup && (
+          <div className="rounded-lg border-2 border-brand-300 dark:border-brand-800 p-3 flex flex-col gap-2">
+            <p className="text-sm font-medium">Quando o cliente quer a retirada?</p>
+            <div className="flex gap-2 flex-wrap items-center">
+              <input type="date" aria-label="Data da retirada" value={pickup.date} min={rental.startDate}
+                onChange={e => setPickup(p => ({ ...p, date: e.target.value }))} className={ui.input} />
+              <input type="time" aria-label="Horário da retirada" value={pickup.time}
+                onChange={e => setPickup(p => ({ ...p, time: e.target.value }))} className={`${ui.input} w-28`} />
+              <button onClick={savePickup} disabled={!pickup.date || busy} className={ui.primary}>Agendar retirada</button>
+              <button onClick={() => setPickup(null)} className="text-xs text-neutral-500 underline">voltar</button>
+            </div>
+            <p className="text-xs text-neutral-500">A retirada vai para a Agenda (para o gerente distribuir) e as limpezas depois dessa data saem.</p>
+          </div>
+        )}
+
+        {monthly && ['confirmado', 'em_andamento', 'encerrado'].includes(rental.status) && (
+          <MonthlySummary rentalId={rental.id} osCode={rental.osCode} clientName={rental.clientName} readOnly={readOnly} />
+        )}
 
         <div>
           <p className={ui.label}>Itens</p>
@@ -552,7 +647,7 @@ export function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit,
             {rental.items.map(i => (
               <li key={i.productTypeId} className="flex justify-between py-1.5">
                 <span>{i.quantity}× {i.name} <span className="text-xs text-neutral-500">{CATEGORY_LABEL[i.category]}</span></span>
-                <span className="text-neutral-500 text-xs">{i.unitPrice != null ? `${fmtBRL(i.unitPrice)}/dia` : ''}</span>
+                <span className="text-neutral-500 text-xs">{i.unitPrice != null ? `${fmtBRL(i.unitPrice)}/${monthly ? 'mês' : 'dia'}` : ''}</span>
               </li>
             ))}
           </ul>
@@ -1106,7 +1201,7 @@ export function OrdensTab({ initialOs, onOsOpened }){
                     <p>{r.clientName}</p>
                     {r.siteName && <p className="text-xs text-neutral-500">{r.siteName}</p>}
                   </td>
-                  <td className="px-4 py-2.5 text-xs whitespace-nowrap">{fmtShort(r.startDate)} a {fmtShort(r.endDate)}</td>
+                  <td className="px-4 py-2.5 text-xs whitespace-nowrap">{periodText(r)}{r.billing === 'mensal' ? <span className="ml-1 text-violet-700 dark:text-violet-300">· mensal</span> : ''}</td>
                   <td className="px-4 py-2.5 text-xs text-neutral-600 dark:text-neutral-400 max-w-[18rem] truncate">{itemsSummary(r.items)}</td>
                   <td className="px-4 py-2.5"><StatusBadge meta={RENTAL_STATUS[r.status]} /></td>
                   <td className="px-4 py-2.5 text-right" onClick={e => e.stopPropagation()}><PdfButton rentalId={r.id} code={r.osCode} className="ml-auto" /></td>
@@ -1117,6 +1212,105 @@ export function OrdensTab({ initialOs, onOsOpened }){
         )}
       </div>
       {open && <RentalDetailModal rentalId={open} readOnly onClose={() => setOpen(null)} onEdit={() => {}} onChanged={async () => {}} />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// RESUMO MENSAL (locação mensal): cada mês do contrato
+// ---------------------------------------------------------------------------
+const CYCLE_STATUS = {
+  em_curso:  { label: 'Em curso',  cls: 'bg-sky-100 text-sky-800 dark:bg-sky-950/60 dark:text-sky-300' },
+  a_faturar: { label: 'A faturar', cls: 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300' },
+  faturado:  { label: 'Faturado',  cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' },
+};
+
+// Texto pronto para colar no sistema de faturamento
+function cycleText(osCode, clientName, c){
+  const lines = c.lines.map(l => `${l.count} × ${l.name} × ${fmtBRL(l.unitPrice)} = ${fmtBRL(l.subtotal)}${l.codes.length ? ` (${l.codes.join(', ')})` : ''}`);
+  return [
+    `${osCode} · ${clientName}`,
+    `Locação mensal · mês ${c.n}: ${fmtDate(c.start)} a ${fmtDate(c.end)}`,
+    ...lines,
+    `Total do mês: ${fmtBRL(c.amount)}`,
+    `Limpezas: ${c.cleaningsDone} feita(s) de ${c.cleaningsPlanned} prevista(s)`,
+  ].join('\n');
+}
+
+function MonthlySummary({ rentalId, osCode, clientName, readOnly }){
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(null);
+  const load = () => api.rentals.cycles(rentalId).then(setData).catch(e => setError(e.message));
+  useEffect(() => { load(); }, [rentalId]);
+
+  const copy = async (c) => {
+    const text = cycleText(osCode, clientName, c);
+    try{ await navigator.clipboard.writeText(text); setCopied(c.n); setTimeout(() => setCopied(null), 1800); }
+    catch(e){ window.prompt('Copie o resumo:', text); }
+  };
+  const invoice = async (c) => {
+    const ref = window.prompt(`Mês ${c.n} (${fmtDate(c.start)} a ${fmtDate(c.end)}): ${fmtBRL(c.amount)}.\nNúmero da nota ou fatura (opcional):`);
+    if(ref === null) return;
+    try{ await api.rentals.invoice(rentalId, c.n, ref.trim()); load(); }catch(e){ setError(e.message); }
+  };
+  const undo = async (c) => {
+    if(!window.confirm(`Desfazer a marcação de faturado do mês ${c.n}?`)) return;
+    try{ await api.rentals.uninvoice(rentalId, c.n); load(); }catch(e){ setError(e.message); }
+  };
+
+  if(error) return <p className="text-sm text-red-500">{error}</p>;
+  if(!data) return null;
+  if(!data.cycles.length) return (
+    <div><p className={ui.label}>Resumo mensal</p><p className="text-xs text-neutral-500">O primeiro mês começa na data de início do contrato.</p></div>
+  );
+  return (
+    <div>
+      <p className={ui.label}>Resumo mensal · {fmtBRL(data.monthlyValue)} por mês contratado</p>
+      <div className="flex flex-col gap-2">
+        {data.cycles.slice().reverse().map(c => (
+          <div key={c.n} className="rounded-lg border border-neutral-200 dark:border-neutral-800 px-3 py-2.5">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-sm font-medium">Mês {c.n} <span className="font-normal text-neutral-500">· {fmtDate(c.start)} a {fmtDate(c.end)}</span></p>
+              <span className={`${ui.badge} ${CYCLE_STATUS[c.status].cls}`}>{CYCLE_STATUS[c.status].label}{c.invoice?.ref ? ` · ${c.invoice.ref}` : ''}</span>
+            </div>
+            <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-1 flex flex-col gap-0.5">
+              {c.lines.map(l => <p key={l.productTypeId}>{l.count} × {l.name} × {fmtBRL(l.unitPrice)} = {fmtBRL(l.subtotal)}</p>)}
+              {c.basis === 'contratado' && <p className="text-amber-700 dark:text-amber-400">Quantidade contratada (nenhuma etiqueta registrada na entrega).</p>}
+              <p>Limpezas: {c.cleaningsDone} feita(s) de {c.cleaningsPlanned} prevista(s)</p>
+            </div>
+            <div className="flex items-center justify-between gap-2 mt-2 flex-wrap">
+              <p className="text-sm font-semibold">{fmtBRL(c.invoice ? c.invoice.amount : c.amount)}</p>
+              <div className="flex gap-2 items-center">
+                <button onClick={() => copy(c)} className={`${ui.secondary} !py-1 text-xs flex items-center gap-1`}><Copy size={12}/> {copied === c.n ? 'Copiado!' : 'Copiar resumo'}</button>
+                {!readOnly && c.status === 'a_faturar' && <button onClick={() => invoice(c)} className={`${ui.primary} !py-1 text-xs`}>Marcar como faturado</button>}
+                {!readOnly && c.status === 'faturado' && <button onClick={() => undo(c)} className="text-xs text-neutral-500 underline">desfazer</button>}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Pendências de faturamento (meses fechados das locações mensais)
+export function PendingBilling({ onOpen }){
+  const [list, setList] = useState(null);
+  useEffect(() => { api.rentals.pendingBilling().then(setList).catch(() => setList([])); }, []);
+  if(!list?.length) return null;
+  const total = list.reduce((n, c) => n + c.amount, 0);
+  return (
+    <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-4 py-3">
+      <p className="text-sm font-medium text-amber-900 dark:text-amber-200">{list.length} mês(es) de locação mensal a faturar · {fmtBRL(total)}</p>
+      <ul className="mt-1.5 flex flex-col gap-1">
+        {list.map(c => (
+          <li key={`${c.rentalId}-${c.n}`} className="text-sm flex items-center justify-between gap-2">
+            <span className="min-w-0 truncate"><span className="font-mono text-xs">{c.osCode}</span> · {c.clientName} · mês {c.n} ({fmtShort(c.start)} a {fmtShort(c.end)})</span>
+            <button onClick={() => onOpen(c.rentalId)} className="text-xs text-brand-700 dark:text-brand-400 underline whitespace-nowrap">{fmtBRL(c.amount)} · abrir</button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

@@ -284,3 +284,28 @@ ON CONFLICT (year) DO UPDATE SET last = GREATEST(os_counter.last, EXCLUDED.last)
 -- =====================================================================
 ALTER TABLE product_types ADD COLUMN IF NOT EXISTS service_every_uses INTEGER; -- revisar a cada N locações
 ALTER TABLE product_types ADD COLUMN IF NOT EXISTS service_every_days INTEGER; -- ou a cada N dias locada
+
+-- =====================================================================
+-- LOCAÇÃO MENSAL
+-- =====================================================================
+-- Tipo de cobrança: diaria (evento) | mensal (obra/contrato, valor fixo por mês por unidade)
+ALTER TABLE rentals ADD COLUMN IF NOT EXISTS billing TEXT NOT NULL DEFAULT 'diaria';
+-- Mensal pode ser por prazo indeterminado (até o cliente pedir a retirada)
+ALTER TABLE rentals ALTER COLUMN end_date DROP NOT NULL;
+-- Dias da semana das limpezas no contrato mensal (0=domingo ... 6=sábado)
+ALTER TABLE rentals ADD COLUMN IF NOT EXISTS cleaning_weekdays INTEGER[];
+-- Preço mensal por unidade no catálogo
+ALTER TABLE product_types ADD COLUMN IF NOT EXISTS monthly_price NUMERIC(10,2);
+
+-- Meses do contrato já faturados no sistema de faturamento (valor guardado no momento da marcação)
+CREATE TABLE IF NOT EXISTS rental_invoices (
+  rental_id     TEXT NOT NULL REFERENCES rentals(id) ON DELETE CASCADE,
+  cycle_no      INTEGER NOT NULL,
+  period_start  DATE NOT NULL,
+  period_end    DATE NOT NULL,
+  amount        NUMERIC(12,2),
+  invoice_ref   TEXT,
+  invoiced_by   TEXT,
+  invoiced_at   TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (rental_id, cycle_no)
+);

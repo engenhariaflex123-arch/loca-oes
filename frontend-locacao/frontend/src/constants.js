@@ -86,3 +86,13 @@ export const ui = {
   danger: 'px-3 py-2 text-sm rounded text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 disabled:opacity-40',
   badge: 'inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded font-medium whitespace-nowrap',
 };
+
+// Dias da semana (0 = domingo), na ordem de segunda a domingo para os seletores
+export const WEEKDAYS_SHORT = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
+export function weekdaysText(days){
+  if(!days?.length) return '';
+  const full = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+  const names = WEEK_ORDER.filter(d => days.includes(d)).map(d => full[d]);
+  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} e ${names.at(-1)}`;
+}

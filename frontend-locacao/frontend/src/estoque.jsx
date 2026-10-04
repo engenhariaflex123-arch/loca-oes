@@ -200,7 +200,7 @@ export function EstoqueTab({ setProductTypes }){
                       </select>
                     </td>
                     <td className="px-4 py-2 text-xs text-neutral-500">
-                      {a.currentRental ? `${a.currentRental.clientName}, até ${fmtShort(a.currentRental.endDate)}` : 'Pátio'}
+                      {a.currentRental ? `${a.currentRental.clientName}, ${a.currentRental.endDate ? `até ${fmtShort(a.currentRental.endDate)}` : 'contrato mensal'}` : 'Pátio'}
                     </td>
                     <td className="px-4 py-2 text-right tabular-nums">
                       {u?.uses ?? '—'}
@@ -243,7 +243,8 @@ export function EstoqueTab({ setProductTypes }){
                   {p.name} <span className="text-xs font-normal text-neutral-500">{CATEGORY_LABEL[p.category]}{!p.active && ', desativado'}</span>
                 </p>
                 <p className="text-xs text-neutral-500">
-                  {p.dailyPrice != null ? `${fmtBRL(p.dailyPrice)}/dia` : 'Sem preço'}
+                  {p.dailyPrice != null ? `${fmtBRL(p.dailyPrice)}/dia` : 'Sem diária'}
+                  {p.monthlyPrice != null ? `, ${fmtBRL(p.monthlyPrice)}/mês` : ''}
                   {p.cleaningIntervalDays ? `, limpeza a cada ${p.cleaningIntervalDays} dia(s)` : ''}
                   {`, ${p.turnaroundDays ?? 0} dia(s) parado após voltar`}
                   {(p.serviceEveryUses || p.serviceEveryDays) ? `, revisão a cada ${[p.serviceEveryUses && `${p.serviceEveryUses} locações`, p.serviceEveryDays && `${p.serviceEveryDays} dias`].filter(Boolean).join(' ou ')}` : ''}
@@ -325,6 +326,10 @@ function ProductModal({ value, onClose, onSaved }){
           <div>
             <label className={ui.label} htmlFor="pm-price">Diária (R$)</label>
             <input id="pm-price" value={p.dailyPrice ?? ''} onChange={set('dailyPrice')} placeholder="0,00" className={`${ui.input} w-full`} />
+          </div>
+          <div>
+            <label className={ui.label} htmlFor="pm-monthly">Mensal (R$)</label>
+            <input id="pm-monthly" value={p.monthlyPrice ?? ''} onChange={set('monthlyPrice')} placeholder="para contratos mensais" className={`${ui.input} w-full`} />
           </div>
           <div>
             <label className={ui.label} htmlFor="pm-turn">Dias parado após voltar</label>
