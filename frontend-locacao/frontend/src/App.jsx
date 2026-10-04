@@ -957,12 +957,12 @@ function CampoAppLink(){
   const copy = async () => {
     try{ await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }catch(e){ window.prompt('Copie o endereço:', url); }
   };
-  const whats = `https://wa.me/?text=${encodeURIComponent(`App da equipe Flex Locações: ${url}\nEntre com a sua equipe e a senha que o escritório passou.`)}`;
+  const whats = `https://wa.me/?text=${encodeURIComponent(`App da equipe Flex Locações: ${url}\n\n1. Abra o link no celular (iPhone: pelo Safari).\n2. Toque em "Instalar app".\n3. Entre com a sua equipe e a senha que o escritório passou.`)}`;
   return (
     <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
       <div className="min-w-0">
         <p className="text-sm font-medium">App das equipes de campo</p>
-        <p className="text-xs text-neutral-500">Abra no celular, entre com a equipe e a senha definida abaixo. Dica: use "Adicionar à tela inicial" para virar um ícone.</p>
+        <p className="text-xs text-neutral-500">Mande o link para o técnico. Ao abrir no celular, ele toca em <b>Instalar app</b> e o ícone Flex Campo fica na tela inicial. Depois é só entrar com a equipe e a senha definida abaixo.</p>
         <p className="text-sm font-mono text-brand-600 dark:text-brand-400 mt-1 truncate">{url}</p>
       </div>
       <div className="flex gap-2 shrink-0">

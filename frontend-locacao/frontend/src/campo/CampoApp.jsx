@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Navigation, Phone, RefreshCw, LogOut, Camera
 import { campoApi, getSession, saveSession } from './campoApi.js';
 import { compressImage, SignaturePad } from './captura.jsx';
 import { Scanner, isOsCode } from './Scanner.jsx';
+import { InstallCard } from './Instalar.jsx';
 import { TEAMS, teamOf, kindLabel } from '../constants.js';
 
 // ---------------------------------------------------------------------------
@@ -127,6 +128,7 @@ function Login({ onLogin }){
     <div className="min-h-screen bg-neutral-100 text-neutral-900 flex flex-col" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
       <div className="flex-1 flex flex-col justify-center px-5 py-8 max-w-md w-full mx-auto">
         <img src="/logo.png" alt="Flex Locações" className="h-14 w-auto self-start mb-6" />
+        <div className="mb-6"><InstallCard /></div>
         <h1 className="text-2xl font-bold mb-1">App da equipe</h1>
         <p className="text-neutral-600 mb-6">Escolha sua equipe e digite a senha.</p>
         <form onSubmit={submit} className="flex flex-col gap-4">
@@ -227,6 +229,7 @@ function Dia({ session, onLogout }){
       </header>
 
       <main className="max-w-xl mx-auto px-4 pt-4 flex flex-col gap-3">
+        <InstallCard compact />
         {date !== todayBR() && (
           <button onClick={() => setDate(todayBR())} className="self-center text-sm font-medium text-brand-700 underline">Voltar para hoje</button>
         )}
