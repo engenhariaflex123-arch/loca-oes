@@ -29,6 +29,24 @@ function qs(params){
   return entries.length ? '?' + new URLSearchParams(entries).toString() : '';
 }
 
+// Baixa um arquivo autenticado (ex.: PDF da O.S.)
+async function download(path, filename){
+  const headers = {};
+  if(authToken) headers.Authorization = `Bearer ${authToken}`;
+  const res = await fetch(`${BASE}${path}`, { headers });
+  if(!res.ok){
+    let message = `Erro ${res.status}`;
+    try{ const b = await res.json(); if(b?.error) message = b.error; }catch(e){}
+    throw new Error(message);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url; link.download = filename;
+  document.body.appendChild(link); link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 export const api = {
   auth: {
     register: (data) => request('/api/auth/register', { method: 'POST', body: JSON.stringify(data) }),
@@ -100,6 +118,7 @@ export const api = {
     get: (id) => request(`/api/rentals/${id}`),
     byCode: (code) => request(`/api/rentals/by-code/${encodeURIComponent(code)}`),
     history: (id) => request(`/api/rentals/${id}/history`),
+    pdf: (id, code) => download(`/api/rentals/${id}/pdf`, `${code || 'ordem-de-servico'}.pdf`),
     availability: (start, end, excludeRentalId) => request('/api/rentals/availability' + qs({ start, end, excludeRentalId })),
     create: (data) => request('/api/rentals', { method: 'POST', body: JSON.stringify(data) }),
     update: (id, data) => request(`/api/rentals/${id}`, { method: 'PUT', body: JSON.stringify(data) }),

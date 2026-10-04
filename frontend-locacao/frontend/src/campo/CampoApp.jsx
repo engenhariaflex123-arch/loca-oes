@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Navigation, Phone, RefreshCw, LogOut, Camera, Images, X, Check, AlertTriangle, Plus, Eye, EyeOff, MapPin, KeyRound, ScanLine } from 'lucide-react';
 import { campoApi, getSession, saveSession } from './campoApi.js';
 import { compressImage, SignaturePad } from './captura.jsx';
-import { Scanner } from './Scanner.jsx';
+import { Scanner, isOsCode } from './Scanner.jsx';
 import { TEAMS, teamOf, kindLabel } from '../constants.js';
 
 // ---------------------------------------------------------------------------
@@ -488,6 +488,7 @@ function Concluir({ stop, team, onCancel, onDone, onExpired }){
   const registerCode = async (raw) => {
     const c = String(raw || '').trim().toUpperCase();
     if(!c) return { ok: false, message: 'Código vazio.' };
+    if(isOsCode(c)) return { ok: false, message: `Esse é o QR da O.S. (${c}), não de um equipamento. Leia a etiqueta colada na unidade.` };
 
     if(isBack && seen.current.has(c)){
       // Retirada: unidade que já constava no local → conferida

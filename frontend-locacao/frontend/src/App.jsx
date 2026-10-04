@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Calendar, Users, ClipboardList, MapPin, Plus, X, Trash2, Edit2, ChevronLeft, ChevronRight, ExternalLink, Sun, Moon, Maximize, Minimize, Route, LogOut, ShieldCheck, History, FileBarChart, Upload, UserPlus, Check, Tent, Boxes, Eye, EyeOff, Bell } from 'lucide-react';
+import { Calendar, Users, ClipboardList, MapPin, Plus, X, Trash2, Edit2, ChevronLeft, ChevronRight, ExternalLink, Sun, Moon, Maximize, Minimize, Route, LogOut, ShieldCheck, History, FileBarChart, Upload, UserPlus, Check, Tent, Boxes, Eye, EyeOff, Bell, FileText } from 'lucide-react';
 import { api, setAuthToken } from './api.js';
 import * as XLSX from 'xlsx';
 import { TEAMS, teamOf, kindLabel, APPT_STATUS, ROLE_LABEL, ROLE_TABS } from './constants.js';
-import { LocacoesTab, DisponibilidadePanel, StatusCards } from './locacoes.jsx';
+import { LocacoesTab, DisponibilidadePanel, StatusCards, OrdensTab } from './locacoes.jsx';
 import { EstoqueTab } from './estoque.jsx';
 import { useFleet, useFleetLayer, FleetPanel, VehiclesSection, EventsBell, useProgress, TeamProgressPanel, EventsFeed, useProgressLayer } from './frota.jsx';
 
@@ -160,7 +160,7 @@ export default function App(){
   // Garante uma aba permitida para o papel; abre a O.S. do link quando houver
   useEffect(() => {
     if(!user) return;
-    if(pendingOs && canTab('locacoes')){ setTab('locacoes'); setLocSub('locacoes'); }
+    if(pendingOs && canTab('ordens')) setTab('ordens');
     else if(!canTab(tab)) setTab(TABS[0]?.id);
     if(pendingOs) window.history.replaceState(null, '', window.location.pathname);
   }, [user?.role]);
@@ -177,6 +177,7 @@ export default function App(){
 
   const ALL_TABS = [
     { id: 'locacoes', label: 'Locações', icon: Tent },
+    { id: 'ordens',   label: 'Ordens de serviço', icon: FileText },
     { id: 'estoque',  label: 'Estoque',  icon: Boxes },
     { id: 'agenda',   label: 'Agenda',   icon: Calendar },
     { id: 'tarefas',  label: 'Tarefas',  icon: ClipboardList },
@@ -268,8 +269,7 @@ export default function App(){
               ))}
             </div>
             {locSub === 'locacoes' && (
-              <LocacoesTab clients={clients} productTypes={productTypes} sites={sites} setSites={setSites} reloadAppointments={reloadAppointments}
-                initialOs={pendingOs} onOsOpened={() => setPendingOs(null)} />
+              <LocacoesTab clients={clients} productTypes={productTypes} sites={sites} setSites={setSites} reloadAppointments={reloadAppointments} />
             )}
             {locSub === 'clientes' && (
               <ClientesTab clients={clients} setClients={setClients} appointments={appointments} taskTypes={taskTypes} />
@@ -277,6 +277,7 @@ export default function App(){
             {locSub === 'disponibilidade' && <DisponibilidadePanel />}
           </div>
         )}
+        {tab === 'ordens' && <OrdensTab initialOs={pendingOs} onOsOpened={() => setPendingOs(null)} />}
         {tab === 'estoque' && (
           <EstoqueTab setProductTypes={setProductTypes} />
         )}

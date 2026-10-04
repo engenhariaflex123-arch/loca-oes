@@ -7,17 +7,20 @@ import jsQR from 'jsqr';
 // - Senão (iPhone), lê o QR da imagem da câmera com a biblioteca jsQR
 // onCode(code) deve devolver { ok: boolean, message: string }: o leitor mostra, vibra e apita.
 
-// Aceita o código puro ("BQ-012") ou um link que termine nele
+// Aceita o código puro ("BQ-012"), o QR da O.S. (link ".../?os=OS-2026-0012" → "OS-2026-0012")
+// ou um link que termine no código. Nada lido vira "" só quando realmente não há código.
 export function normalizeCode(raw){
   let t = String(raw || '').trim();
   try{
     if(/^https?:\/\//i.test(t)){
       const u = new URL(t);
-      t = u.searchParams.get('code') || u.searchParams.get('codigo') || u.pathname.split('/').filter(Boolean).pop() || '';
+      t = u.searchParams.get('os') || u.searchParams.get('code') || u.searchParams.get('codigo')
+        || u.pathname.split('/').filter(Boolean).pop() || '';
     }
   }catch(e){}
   return decodeURIComponent(t).trim().toUpperCase();
 }
+export const isOsCode = (code) => /^OS-\d{4}-\d+$/i.test(String(code || ''));
 
 let audioCtx = null;
 function beep(ok){
@@ -103,9 +106,10 @@ export function Scanner({ title, progress, onCode, onClose }){
           const code = normalizeCode(text);
           const now = Date.now();
           // Ignora a mesma etiqueta lida de novo nos próximos 3 s (a câmera continua vendo)
-          if(code && !(code === lastRead.current.code && now - lastRead.current.at < 3000)){
-            lastRead.current = { code, at: now };
-            const r = await onCode(code);
+          const key = code || text;
+          if(!(key === lastRead.current.code && now - lastRead.current.at < 3000)){
+            lastRead.current = { code: key, at: now };
+            const r = code ? await onCode(code) : { ok: false, message: 'QR code lido, mas não é de um equipamento nem de uma O.S. da Flex Locações.' };
             setFeedback({ ok: r.ok, message: r.message, at: now });
             beep(r.ok);
             navigator.vibrate?.(r.ok ? 80 : [80, 60, 80]);

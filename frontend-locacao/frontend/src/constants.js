@@ -13,8 +13,8 @@ export function teamOf(id){ return (id && TEAMS.find(t => t.id === id)) || NO_TE
 export const ROLE_LABEL = { admin: 'Administrador', gerente: 'Gerente de Logística', comercial: 'Comercial' };
 export const ROLE_TABS = {
   admin: null, // tudo
-  comercial: ['locacoes', 'estoque'],
-  gerente: ['estoque', 'agenda', 'tarefas', 'equipes', 'mapa', 'relatorios'],
+  comercial: ['locacoes', 'ordens', 'estoque'],
+  gerente: ['ordens', 'estoque', 'agenda', 'tarefas', 'equipes', 'mapa', 'relatorios'],
 };
 
 // Tipos de visita gerados pelas locações

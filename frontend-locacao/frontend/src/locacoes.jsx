@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import QRCode from 'qrcode';
-import { Plus, X, Trash2, Edit2, MapPinned, AlertTriangle, Check, Search, Copy, QrCode, Clock, Building2, Users, Satellite, Image as ImageIcon } from 'lucide-react';
+import { Plus, X, Trash2, Edit2, MapPinned, AlertTriangle, Check, Search, Copy, FileDown, Clock, Building2, Users, Satellite, Image as ImageIcon } from 'lucide-react';
 import { api } from './api.js';
 import {
   teamOf, kindLabel, CATEGORY_LABEL, RENTAL_STATUS, APPT_STATUS, ASSET_STATUS,
@@ -413,7 +412,7 @@ function RentalFormModal({ rental, clients, productTypes, sites, setSites, onClo
 // ---------------------------------------------------------------------------
 // DETALHE DA LOCAÇÃO
 // ---------------------------------------------------------------------------
-function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit, onChanged }){
+export function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit, onChanged, readOnly = false }){
   const [rental, setRental] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -487,7 +486,7 @@ function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit, onChan
 
   const days = daysInclusive(rental.startDate, rental.endDate);
   const atSite = rental.assets.filter(a => a.deliveredAt && !a.returnedAt);
-  const editable = ['orcamento', 'confirmado', 'em_andamento'].includes(rental.status);
+  const editable = !readOnly && ['orcamento', 'confirmado', 'em_andamento'].includes(rental.status);
 
   return (
     <Modal size="xl" onClose={onClose}
@@ -498,7 +497,12 @@ function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit, onChan
           <StatusBadge meta={RENTAL_STATUS[rental.status]} />
         </div>
       }
-      footer={
+      footer={readOnly ? (
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-neutral-500">Consulta. Alterações na O.S. são feitas pelo comercial, na aba Locações.</p>
+          {rental.osCode && <PdfButton rentalId={rental.id} code={rental.osCode} />}
+        </div>
+      ) : (
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex gap-2">
             {['orcamento', 'cancelado'].includes(rental.status) && (
@@ -520,7 +524,7 @@ function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit, onChan
             )}
           </div>
         </div>
-      }>
+      )}>
       <div className="flex flex-col gap-5">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
           <div>
@@ -555,11 +559,11 @@ function RentalDetailModal({ rentalId, initialShortages, onClose, onEdit, onChan
           {rental.notes && <p className="text-xs text-neutral-500 mt-2 whitespace-pre-line">{rental.notes}</p>}
         </div>
 
-        {rental.status === 'orcamento' && (
+        {rental.status === 'orcamento' && !readOnly && (
           <p className="text-xs text-neutral-500">Ao confirmar, o estoque fica reservado e as visitas de entrega, limpeza e retirada vão para a Agenda. O gerente de logística escolhe a equipe de cada uma.</p>
         )}
 
-        {rental.osCode && <OsCodeBox code={rental.osCode} />}
+        {rental.osCode && <OsCodeBox code={rental.osCode} rentalId={rental.id} />}
 
         <ShortagesBox shortages={shortages} title={rental.status === 'orcamento' ? 'Falta estoque para confirmar' : undefined} />
 
@@ -852,35 +856,41 @@ function SitesModal({ clients, sites, setSites, onClose }){
 }
 
 // ---------------------------------------------------------------------------
-// CÓDIGO DA O.S. COM QR CODE
+// CÓDIGO DA O.S. + PDF
 // ---------------------------------------------------------------------------
 export function osLink(code){ return `${window.location.origin}/?os=${encodeURIComponent(code)}`; }
 
-function OsCodeBox({ code }){
-  const [qr, setQr] = useState(null);
-  const [copied, setCopied] = useState('');
-  useEffect(() => {
-    QRCode.toDataURL(osLink(code), { margin: 1, width: 360, errorCorrectionLevel: 'M' }).then(setQr).catch(() => setQr(null));
-  }, [code]);
-  const copy = async (text, what) => {
-    try{ await navigator.clipboard.writeText(text); setCopied(what); setTimeout(() => setCopied(''), 2000); }
-    catch(e){ window.prompt('Copie:', text); }
+export function PdfButton({ rentalId, code, className = '' }){
+  const [busy, setBusy] = useState(false);
+  const go = async (e) => {
+    e?.stopPropagation();
+    setBusy(true);
+    try{ await api.rentals.pdf(rentalId, code); }catch(err){ window.alert(`Não foi possível gerar o PDF: ${err.message}`); }
+    setBusy(false);
   };
   return (
-    <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 flex gap-4 items-center">
-      {qr ? <img src={qr} alt={`QR code da ${code}`} className="w-28 h-28 rounded bg-white p-1 shrink-0" />
-          : <div className="w-28 h-28 rounded bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0"><QrCode size={28} className="text-neutral-400"/></div>}
-      <div className="min-w-0 flex flex-col gap-2">
-        <div>
-          <p className={ui.label}>Ordem de serviço</p>
-          <p className="text-2xl font-mono font-semibold tracking-tight">{code}</p>
-          <p className="text-xs text-neutral-500">Acompanha a locação em todas as etapas. Quem lê o QR code (logado na plataforma) abre esta O.S.</p>
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <button onClick={() => copy(code, 'código')} className={`${ui.secondary} !py-1.5 text-xs flex items-center gap-1`}><Copy size={12}/> {copied === 'código' ? 'Copiado!' : 'Copiar código'}</button>
-          <button onClick={() => copy(osLink(code), 'link')} className={`${ui.secondary} !py-1.5 text-xs flex items-center gap-1`}><Copy size={12}/> {copied === 'link' ? 'Copiado!' : 'Copiar link'}</button>
-          {qr && <a href={qr} download={`${code}.png`} className={`${ui.secondary} !py-1.5 text-xs flex items-center gap-1`}><QrCode size={12}/> Baixar QR</a>}
-        </div>
+    <button onClick={go} disabled={busy} className={`${ui.secondary} !py-1.5 text-xs flex items-center gap-1 ${className}`}>
+      <FileDown size={13}/> {busy ? 'Gerando PDF...' : 'Gerar PDF'}
+    </button>
+  );
+}
+
+function OsCodeBox({ code, rentalId }){
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try{ await navigator.clipboard.writeText(code); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch(e){ window.prompt('Copie:', code); }
+  };
+  return (
+    <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 p-3 flex items-center justify-between gap-3 flex-wrap">
+      <div>
+        <p className={ui.label}>Ordem de serviço</p>
+        <p className="text-2xl font-mono font-semibold tracking-tight">{code}</p>
+        <p className="text-xs text-neutral-500">Acompanha a locação em todas as etapas. O PDF traz o pedido, as etapas, o histórico e os comprovantes.</p>
+      </div>
+      <div className="flex gap-2">
+        <button onClick={copy} className={`${ui.secondary} !py-1.5 text-xs flex items-center gap-1`}><Copy size={12}/> {copied ? 'Copiado!' : 'Copiar código'}</button>
+        <PdfButton rentalId={rentalId} code={code} />
       </div>
     </div>
   );
@@ -1014,6 +1024,99 @@ export function StatusCards({ appointments, onPick }){
           </Tag>
         );
       })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ABA ORDENS DE SERVIÇO (todos os perfis: consulta + PDF)
+// ---------------------------------------------------------------------------
+const OS_FILTERS = [
+  { id: 'todas', label: 'Todas', status: null },
+  { id: 'abertas', label: 'Em aberto', status: 'orcamento,confirmado,em_andamento' },
+  { id: 'em_andamento', label: 'Em andamento', status: 'em_andamento' },
+  { id: 'encerrado', label: 'Encerradas', status: 'encerrado' },
+  { id: 'cancelado', label: 'Canceladas', status: 'cancelado' },
+];
+
+export function OrdensTab({ initialOs, onOsOpened }){
+  const [filter, setFilter] = useState('todas');
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(null);
+
+  useEffect(() => {
+    setRows(null);
+    const st = OS_FILTERS.find(f => f.id === filter)?.status;
+    api.rentals.list(st ? { status: st } : {}).then(r => { setRows(r); setError(''); }).catch(e => setError(e.message));
+  }, [filter]);
+  useEffect(() => {
+    if(!initialOs) return;
+    api.rentals.byCode(initialOs).then(r => setOpen(r.id)).catch(e => setError(e.message));
+    onOsOpened?.();
+  }, [initialOs]);
+
+  const q = search.trim().toLowerCase();
+  const list = (rows || [])
+    .filter(r => !q || `${r.osCode || ''} ${r.clientName} ${r.siteName || ''} ${itemsSummary(r.items)}`.toLowerCase().includes(q))
+    .sort((a, b) => (b.osCode || '').localeCompare(a.osCode || '', 'pt-BR', { numeric: true }));
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex gap-1 flex-wrap" role="tablist">
+          {OS_FILTERS.map(f => (
+            <button key={f.id} onClick={() => setFilter(f.id)} role="tab" aria-selected={filter === f.id}
+              className={`text-xs font-mono px-3 py-1.5 rounded border ${filter === f.id
+                ? 'border-brand-500 bg-brand-50 dark:bg-brand-950 text-brand-600 dark:text-brand-400'
+                : 'border-neutral-300 dark:border-neutral-700 text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'}`}>
+              {f.label}
+            </button>
+          ))}
+        </div>
+        <div className="relative w-full sm:w-80">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"/>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar O.S., cliente, local..."
+            className="w-full bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-lg pl-9 pr-3 py-2 text-sm" />
+        </div>
+      </div>
+
+      {error && <p className="text-sm text-red-500">{error}</p>}
+      <div className={`${ui.card} overflow-x-auto`}>
+        {!rows && !error && <p className="p-4 text-sm text-neutral-500 font-mono">Carregando...</p>}
+        {rows && list.length === 0 && <p className="p-4 text-sm text-neutral-500">Nenhuma O.S. encontrada.</p>}
+        {list.length > 0 && (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-neutral-500 font-mono uppercase border-b border-neutral-200 dark:border-neutral-800">
+                <th className="px-4 py-2 font-normal">O.S.</th>
+                <th className="px-4 py-2 font-normal">Cliente</th>
+                <th className="px-4 py-2 font-normal">Período</th>
+                <th className="px-4 py-2 font-normal">Itens</th>
+                <th className="px-4 py-2 font-normal">Situação</th>
+                <th className="px-4 py-2 font-normal"><span className="sr-only">PDF</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map(r => (
+                <tr key={r.id} onClick={() => setOpen(r.id)} className="border-t border-neutral-100 dark:border-neutral-800 cursor-pointer hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
+                  <td className="px-4 py-2.5 font-mono font-medium whitespace-nowrap">{r.osCode}</td>
+                  <td className="px-4 py-2.5">
+                    <p>{r.clientName}</p>
+                    {r.siteName && <p className="text-xs text-neutral-500">{r.siteName}</p>}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs whitespace-nowrap">{fmtShort(r.startDate)} a {fmtShort(r.endDate)}</td>
+                  <td className="px-4 py-2.5 text-xs text-neutral-600 dark:text-neutral-400 max-w-[18rem] truncate">{itemsSummary(r.items)}</td>
+                  <td className="px-4 py-2.5"><StatusBadge meta={RENTAL_STATUS[r.status]} /></td>
+                  <td className="px-4 py-2.5 text-right" onClick={e => e.stopPropagation()}><PdfButton rentalId={r.id} code={r.osCode} className="ml-auto" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+      {open && <RentalDetailModal rentalId={open} readOnly onClose={() => setOpen(null)} onEdit={() => {}} onChanged={async () => {}} />}
     </div>
   );
 }

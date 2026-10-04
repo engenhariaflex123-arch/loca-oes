@@ -5,6 +5,7 @@ import { uid, isDate, diffDays, toNumber, HttpError, withTransaction } from '../
 import { getAvailability, findShortages, lockAvailability } from '../services/availability.js';
 import { generateAppointments } from '../services/schedule.js';
 import { addHistory, rentalTimeline } from '../services/history.js';
+import { buildOsPdf } from '../services/osPdf.js';
 
 const router = Router();
 const ACTIVE = ['confirmado', 'em_andamento'];
@@ -117,6 +118,12 @@ router.get('/by-code/:code', async (req, res) => {
   const { rows: [r] } = await pool.query('SELECT id FROM rentals WHERE upper(os_code)=upper($1)', [req.params.code.trim()]);
   if(!r) throw new HttpError(404, 'Nenhuma O.S. com esse código.');
   res.json(await fetchRental(pool, r.id));
+});
+
+// --- PDF da O.S. (pedido, etapas, visitas, unidades, histórico e comprovantes)
+router.get('/:id/pdf', async (req, res) => {
+  const ok = await buildOsPdf(req.params.id, res, req.user?.name);
+  if(!ok) throw new HttpError(404, 'Locação não encontrada.');
 });
 
 // --- História completa da O.S. (etapas + linha do tempo)
