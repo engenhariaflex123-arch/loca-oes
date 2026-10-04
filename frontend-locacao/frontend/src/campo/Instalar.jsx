@@ -71,7 +71,7 @@ export function InstallCard({ compact = false }){
                 <li className="flex gap-3 items-start"><span className="w-7 h-7 rounded-full bg-brand-600 text-white font-bold flex items-center justify-center shrink-0">2</span>
                   <span>Role a lista e toque em <b>Adicionar à Tela de Início</b> <PlusSquare size={18} className="inline -mt-1 text-brand-600"/>.</span></li>
                 <li className="flex gap-3 items-start"><span className="w-7 h-7 rounded-full bg-brand-600 text-white font-bold flex items-center justify-center shrink-0">3</span>
-                  <span>Toque em <b>Adicionar</b>. O ícone <b>Flex Campo</b> aparece na tela inicial.</span></li>
+                  <span>Toque em <b>Adicionar</b>. O ícone <b>Flex Locações</b> aparece na tela inicial.</span></li>
                 <li className="text-sm text-neutral-500">No iPhone, abra este link pelo <b>Safari</b> para ter essa opção.</li>
               </ol>
             ) : (
@@ -81,7 +81,7 @@ export function InstallCard({ compact = false }){
                 <li className="flex gap-3 items-start"><span className="w-7 h-7 rounded-full bg-brand-600 text-white font-bold flex items-center justify-center shrink-0">2</span>
                   <span>Toque em <b>Instalar app</b> (ou <b>Adicionar à tela inicial</b>).</span></li>
                 <li className="flex gap-3 items-start"><span className="w-7 h-7 rounded-full bg-brand-600 text-white font-bold flex items-center justify-center shrink-0">3</span>
-                  <span>Confirme. O ícone <b>Flex Campo</b> aparece na tela inicial.</span></li>
+                  <span>Confirme. O ícone <b>Flex Locações</b> aparece na tela inicial.</span></li>
                 <li className="text-sm text-neutral-500">Se a opção não aparecer, abra o link pelo <b>Google Chrome</b>.</li>
               </ol>
             )}

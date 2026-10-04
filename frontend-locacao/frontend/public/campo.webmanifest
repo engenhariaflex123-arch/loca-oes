@@ -1,6 +1,6 @@
 {
-  "name": "Flex Locações · Campo",
-  "short_name": "Flex Campo",
+  "name": "Flex Locações",
+  "short_name": "Flex Locações",
   "description": "App das equipes de campo da Flex Locações: paradas do dia, rota, entrega, limpeza e retirada.",
   "id": "/campo",
   "start_url": "/campo",

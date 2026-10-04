@@ -95,7 +95,7 @@ export default function CampoApp(){
   const [session, setSession] = useState(getSession);
 
   useEffect(() => {
-    document.title = 'Flex Locações · Campo';
+    document.title = 'Flex Locações';
     document.documentElement.classList.remove('dark');
   }, []);
 

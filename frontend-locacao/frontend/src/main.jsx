@@ -15,7 +15,7 @@ if(isCampo){
   add('link', { rel: 'manifest', href: '/campo.webmanifest' });
   head.querySelectorAll('link[rel="apple-touch-icon"]').forEach(el => el.remove());
   add('link', { rel: 'apple-touch-icon', href: '/campo-apple-touch-icon.png' });
-  add('meta', { name: 'apple-mobile-web-app-title', content: 'Flex Campo' });
+  add('meta', { name: 'apple-mobile-web-app-title', content: 'Flex Locações' });
   add('meta', { name: 'apple-mobile-web-app-status-bar-style', content: 'default' });
   // Android/Chrome: guarda o convite de instalação para o botão "Instalar app" usar na hora certa
   window.addEventListener('beforeinstallprompt', (e) => {

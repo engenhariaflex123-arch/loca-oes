@@ -2,7 +2,7 @@
 // - Páginas e arquivos do app: tenta a rede primeiro (sempre a versão mais nova);
 //   sem internet, abre a última versão guardada.
 // - Dados (API no Railway, outro endereço): nunca guarda; vão sempre direto para a rede.
-const CACHE = 'flex-campo-v1';
+const CACHE = 'flex-campo-v2';
 const SHELL = ['/campo', '/campo.webmanifest', '/campo-icon-192.png', '/campo-icon-512.png', '/logo.png'];
 
 self.addEventListener('install', (e) => {
