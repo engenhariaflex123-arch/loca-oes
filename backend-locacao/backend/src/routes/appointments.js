@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { pool } from '../db.js';
 import { logAudit } from '../audit.js';
-import { HttpError } from '../utils.js';
+import { HttpError, uid, isDate } from '../utils.js';
 import { addHistory } from '../services/history.js';
 import { kindLabel, teamName } from '../services/events.js';
 
@@ -9,6 +9,11 @@ const router = Router();
 
 const KINDS = ['entrega', 'montagem', 'limpeza', 'retirada', 'desmontagem', 'manutencao', 'vistoria'];
 const STATUSES = ['pendente', 'em_rota', 'concluido', 'nao_realizado', 'cancelado'];
+// Visita finalizada é fato registrado: não muda de dia/equipe/cliente nem é excluída.
+// Para voltar ao cliente, cria-se uma nova visita (POST /:id/redo).
+const FINAL = ['concluido', 'nao_realizado'];
+const dm = (d) => `${String(d).slice(8, 10)}/${String(d).slice(5, 7)}`;
+const sameTasks = (a, b) => JSON.stringify(a || []) === JSON.stringify(b || []);
 
 function toAppt(row){
   return {
@@ -66,7 +71,23 @@ router.post('/', async (req, res) => {
 router.put('/:id', async (req, res) => {
   checkEnums(req.body);
   const { rows: [before] } = await pool.query('SELECT * FROM appointments WHERE id=$1', [req.params.id]);
+  if(!before) throw new HttpError(404, 'Visita não encontrada.');
   const { date, clientId, teamId, taskIds, notes, siteId, kind, timeWindow, routeOrder, items, status } = req.body;
+
+  if(FINAL.includes(before.status)){
+    // Só as observações podem mudar numa visita finalizada
+    const changed = String(before.date) !== String(date) || (before.team_id || null) !== (teamId || null)
+      || before.client_id !== clientId || (kind && kind !== before.kind) || (status && status !== before.status)
+      || (before.time_window || '') !== (timeWindow || '') || !sameTasks(before.task_ids, taskIds);
+    if(changed){
+      throw new HttpError(409, before.status === 'concluido'
+        ? 'Essa visita já foi concluída e não pode mudar de dia, equipe ou tarefas. Para voltar ao cliente, use "Agendar retorno".'
+        : 'Essa visita foi registrada como não realizada e fica no histórico. Para tentar de novo, use "Reagendar".');
+    }
+    await pool.query('UPDATE appointments SET notes=$1 WHERE id=$2', [notes || null, req.params.id]);
+    await logAudit(req.user, 'update', 'appointment', `${date} — observações de visita finalizada`);
+    return res.json({ ...req.body, status: before.status });
+  }
   await pool.query(
     `UPDATE appointments SET date=$1, client_id=$2, team_id=$3, task_ids=$4, notes=$5,
        site_id=COALESCE($6, site_id), kind=COALESCE($7, kind), time_window=$8, route_order=$9,
@@ -112,12 +133,53 @@ router.put('/route/order', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   const { rows } = await pool.query(
-    `SELECT a.date, c.name FROM appointments a LEFT JOIN clients c ON c.id = a.client_id WHERE a.id=$1`,
+    `SELECT a.date, a.status, c.name FROM appointments a LEFT JOIN clients c ON c.id = a.client_id WHERE a.id=$1`,
     [req.params.id]
   );
+  if(rows[0] && FINAL.includes(rows[0].status)){
+    throw new HttpError(409, 'Visitas concluídas ou não realizadas não podem ser excluídas: o registro (fotos, assinatura, unidades, motivo) faz parte do histórico.');
+  }
   await pool.query('DELETE FROM appointments WHERE id=$1', [req.params.id]);
   await logAudit(req.user, 'delete', 'appointment', rows[0] ? `${rows[0].date} — ${rows[0].name}` : null);
   res.status(204).end();
+});
+
+// --- Reagendar (não realizada) ou agendar retorno (concluída): cria uma NOVA visita com os mesmos dados.
+// A visita original fica como está, com o registro do que aconteceu.
+router.post('/:id/redo', async (req, res) => {
+  const { date, teamId, timeWindow, reason } = req.body;
+  if(!isDate(date)) throw new HttpError(400, 'Escolha o dia da nova visita.');
+  const { rows: [orig] } = await pool.query('SELECT * FROM appointments WHERE id=$1', [req.params.id]);
+  if(!orig) throw new HttpError(404, 'Visita não encontrada.');
+  if(!FINAL.includes(orig.status)) throw new HttpError(409, 'Essa visita ainda está aberta: basta mudar o dia ou a equipe dela.');
+  if(orig.rental_id){
+    const { rows: [rent] } = await pool.query('SELECT status, os_code FROM rentals WHERE id=$1', [orig.rental_id]);
+    if(rent && ['encerrado', 'cancelado'].includes(rent.status)){
+      throw new HttpError(409, `A locação ${rent.os_code || ''} já foi ${rent.status === 'encerrado' ? 'encerrada (as unidades voltaram ao pátio)' : 'cancelada'}. Para voltar ao cliente, crie uma nova locação.`);
+    }
+  }
+  const id = uid();
+  const why = String(reason || '').trim();
+  const label = orig.status === 'nao_realizado' ? 'Reagendada' : 'Retorno';
+  await pool.query(
+    `INSERT INTO appointments (id, date, client_id, team_id, task_ids, notes, rental_id, site_id, kind, time_window, items, auto_generated)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,false)`,
+    [id, date, orig.client_id, teamId || null, JSON.stringify(orig.task_ids || []),
+     `${label} (visita de ${dm(orig.date)})${why ? `: ${why}` : ''}`,
+     orig.rental_id, orig.site_id, orig.kind, timeWindow || null, JSON.stringify(orig.items || [])]);
+  if(orig.rental_id){
+    await addHistory(null, { rentalId: orig.rental_id, appointmentId: id, type: 'remarcada', user: req.user,
+      message: orig.status === 'nao_realizado'
+        ? `${kindLabel(orig.kind)} de ${dm(orig.date)} (não realizada) reagendada para ${dm(date)}${timeWindow ? ` às ${timeWindow}` : ''}${teamId ? `, ${teamName(teamId)}` : ', aguardando equipe'}${why ? `. Motivo: ${why}` : ''}.`
+        : `Retorno agendado: nova ${kindLabel(orig.kind).toLowerCase()} em ${dm(date)}${timeWindow ? ` às ${timeWindow}` : ''}${teamId ? `, ${teamName(teamId)}` : ''} (a de ${dm(orig.date)} continua concluída)${why ? `. Motivo: ${why}` : ''}.` });
+  }
+  await logAudit(req.user, 'create', 'appointment', `${label}: ${dm(orig.date)} → ${dm(date)}`, { from: orig.id, reason: why || null });
+  const { rows: [created] } = await pool.query('SELECT * FROM appointments WHERE id=$1', [id]);
+  res.status(201).json({
+    id: created.id, date: created.date, clientId: created.client_id, teamId: created.team_id, taskIds: created.task_ids || [],
+    notes: created.notes, status: created.status, rentalId: created.rental_id, siteId: created.site_id, kind: created.kind,
+    timeWindow: created.time_window, routeOrder: created.route_order, items: created.items || [], autoGenerated: false,
+  });
 });
 
 router.get('/:id/execution', async (req, res) => {

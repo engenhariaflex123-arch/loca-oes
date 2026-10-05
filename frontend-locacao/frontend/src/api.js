@@ -76,6 +76,7 @@ export const api = {
     update: (id, data) => request(`/api/appointments/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     remove: (id) => request(`/api/appointments/${id}`, { method: 'DELETE' }),
     getExecution: (id) => request(`/api/appointments/${id}/execution`),
+    redo: (id, data) => request(`/api/appointments/${id}/redo`, { method: 'POST', body: JSON.stringify(data) }),
   },
   teamMembers: {
     list: () => request('/api/team-members'),

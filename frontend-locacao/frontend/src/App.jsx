@@ -331,20 +331,31 @@ function AgendaTab({ clients, taskTypes, appointments, setAppointments, base }){
   appointments.forEach(a => { (apptsByDate[a.date] = apptsByDate[a.date] || []).push(a); });
 
   const saveAppointment = async (data) => {
-    if(data.id){
-      await api.appointments.update(data.id, data);
-      setAppointments(prev => prev.map(a => a.id === data.id ? data : a));
-    }else{
-      const withId = { ...data, id: uid() };
-      await api.appointments.create(withId);
-      setAppointments(prev => [...prev, withId]);
-    }
+    try{
+      if(data.id){
+        await api.appointments.update(data.id, data);
+        setAppointments(prev => prev.map(a => a.id === data.id ? data : a));
+      }else{
+        const withId = { ...data, id: uid() };
+        await api.appointments.create(withId);
+        setAppointments(prev => [...prev, withId]);
+      }
+      setModal(null);
+    }catch(err){ window.alert(err.message); }
+  };
+  // Nova visita a partir de uma concluída/não realizada (a original fica como registro)
+  const redoAppointment = async (id, data) => {
+    const created = await api.appointments.redo(id, { ...data, timeWindow: data.timeWindow || null });
+    setAppointments(prev => [...prev, created]);
     setModal(null);
   };
+
   const deleteAppointment = async (id) => {
-    await api.appointments.remove(id);
-    setAppointments(prev => prev.filter(a => a.id !== id));
-    setModal(null);
+    try{
+      await api.appointments.remove(id);
+      setAppointments(prev => prev.filter(a => a.id !== id));
+      setModal(null);
+    }catch(err){ window.alert(err.message); }
   };
 
   const [draggingId, setDraggingId] = useState(null);
@@ -353,12 +364,17 @@ function AgendaTab({ clients, taskTypes, appointments, setAppointments, base }){
   const moveAppointment = async (apptId, newDateKey) => {
     const appt = appointments.find(a => a.id === apptId);
     if(!appt || appt.date === newDateKey) return;
+    if(['concluido', 'nao_realizado'].includes(appt.status)){
+      window.alert('Visita finalizada não muda de dia. Abra a visita e use "Reagendar" ou "Agendar retorno".');
+      return;
+    }
     const updated = { ...appt, date: newDateKey };
     setAppointments(prev => prev.map(a => a.id === apptId ? updated : a));
     try{
       await api.appointments.update(apptId, updated);
     }catch(err){
       setAppointments(prev => prev.map(a => a.id === apptId ? appt : a));
+      window.alert(err.message);
     }
   };
 
@@ -420,10 +436,10 @@ function AgendaTab({ clients, taskTypes, appointments, setAppointments, base }){
                   const label = (client ? client.name : '(cliente removido)') + (site ? ` (${site.name})` : '');
                   return (
                     <button key={a.id} onClick={() => setModal({ dateKey, editingId: a.id })}
-                      draggable
+                      draggable={!done && !failed}
                       onDragStart={e => { setDraggingId(a.id); e.dataTransfer.effectAllowed = 'move'; }}
                       onDragEnd={() => { setDraggingId(null); setDragOverDate(null); }}
-                      className={`text-left text-[11px] leading-tight px-1.5 py-1 rounded truncate flex items-center gap-1 cursor-grab active:cursor-grabbing ${done ? 'opacity-70' : ''} ${draggingId === a.id ? 'opacity-40' : ''} ${!a.teamId ? 'border border-dashed border-amber-500' : ''}`}
+                      className={`text-left text-[11px] leading-tight px-1.5 py-1 rounded truncate flex items-center gap-1 ${done || failed ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'} ${done ? 'opacity-70' : ''} ${draggingId === a.id ? 'opacity-40' : ''} ${!a.teamId ? 'border border-dashed border-amber-500' : ''}`}
                       style={{ background: team.bg, color: team.text }}
                       title={`${a.rentalId ? kindLabel(a.kind) + ': ' : ''}${label}${done ? ' (concluída)' : failed ? ' (não realizada)' : ''}`}>
                       {done && <Check size={11} className="shrink-0" strokeWidth={3} />}
@@ -504,13 +520,13 @@ function AgendaTab({ clients, taskTypes, appointments, setAppointments, base }){
 
       {modal && (
         <AppointmentModal modal={modal} clients={clients} taskTypes={taskTypes} appointments={appointments} base={base}
-          onClose={() => setModal(null)} onSave={saveAppointment} onDelete={deleteAppointment} />
+          onClose={() => setModal(null)} onSave={saveAppointment} onDelete={deleteAppointment} onRedo={redoAppointment} />
       )}
     </div>
   );
 }
 
-function AppointmentModal({ modal, clients, taskTypes, appointments, base, onClose, onSave, onDelete }){
+function AppointmentModal({ modal, clients, taskTypes, appointments, base, onClose, onSave, onDelete, onRedo }){
   const editing = modal.editingId ? appointments.find(a => a.id === modal.editingId) : null;
   const [clientId, setClientId] = useState(editing?.clientId || '');
   const [taskQuantities, setTaskQuantities] = useState(() => {
@@ -553,9 +569,20 @@ function AppointmentModal({ modal, clients, taskTypes, appointments, base, onClo
     clients, taskTypes, base
   ) : null;
 
+  // Visita finalizada (concluída ou não realizada) é registro: fica travada; para voltar ao cliente, cria-se outra
+  const finalized = ['concluido', 'nao_realizado'].includes(editing?.status);
+  const [redo, setRedo] = useState({ date: '', timeWindow: '', teamId: editing?.teamId || null, reason: '' });
+  const [redoError, setRedoError] = useState('');
+  const [redoBusy, setRedoBusy] = useState(false);
+  const submitRedo = async () => {
+    setRedoBusy(true); setRedoError('');
+    try{ await onRedo(editing.id, redo); }
+    catch(err){ setRedoError(err.message); setRedoBusy(false); }
+  };
+
   const handleSave = () => {
     if(!clientId) return;
-    if(load?.over && !window.confirm(`Tempo insuficiente para as tarefas: o dia da ${teamOf(teamId).name} ficaria com ${fmtHM(load.total)}, e a jornada é de ${fmtHM(load.budget)}.\n\nSalvar mesmo assim?`)) return;
+    if(!finalized && load?.over && !window.confirm(`Tempo insuficiente para as tarefas: o dia da ${teamOf(teamId).name} ficaria com ${fmtHM(load.total)}, e a jornada é de ${fmtHM(load.budget)}.\n\nSalvar mesmo assim?`)) return;
     // Mantém os campos da locação (tipo, itens, local) ao salvar
     onSave({ ...(editing || {}), id: editing?.id, date: modal.dateKey, clientId, taskIds: taskIdsNow, teamId, notes, timeWindow: timeWindow || null });
   };
@@ -590,6 +617,13 @@ function AppointmentModal({ modal, clients, taskTypes, appointments, base, onClo
               <p className="text-xs text-neutral-500 mt-1">Datas e itens da locação se mudam na aba Locações. Aqui dá para trocar dia, equipe e tarefas desta visita.</p>
             </div>
           )}
+          {finalized && (
+            <div className={`rounded-lg px-3 py-2.5 text-sm ${editing.status === 'concluido' ? 'bg-emerald-50 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-200' : 'bg-red-50 text-red-900 dark:bg-red-950/40 dark:text-red-200'}`}>
+              <p className="font-medium">{editing.status === 'concluido' ? 'Visita concluída' : 'Visita não realizada'}: fica registrada como está.</p>
+              <p className="text-xs mt-0.5">Dia, equipe e tarefas não mudam mais; só as observações. Para voltar ao cliente, use {editing.status === 'concluido' ? '"Agendar retorno"' : '"Reagendar"'} abaixo.</p>
+            </div>
+          )}
+          <fieldset disabled={finalized} className={`flex flex-col gap-4 min-w-0 ${finalized ? 'opacity-60' : ''}`}>
           <div>
             <label className="text-xs font-mono uppercase text-neutral-500 mb-1 block">Cliente</label>
             {clients.length === 0 ? (
@@ -662,10 +696,46 @@ function AppointmentModal({ modal, clients, taskTypes, appointments, base, onClo
             )}
           </div>
 
+          </fieldset>
+
           <div>
             <label className="text-xs font-mono uppercase text-neutral-500 mb-1 block">Observações</label>
             <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className="w-full bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded px-3 py-2 text-sm" placeholder="Opcional" />
           </div>
+
+          {finalized && (
+            <div className="rounded-lg border-2 border-brand-200 dark:border-brand-900 p-3 flex flex-col gap-2.5">
+              <p className="text-sm font-medium">{editing.status === 'concluido' ? 'Agendar retorno (nova visita)' : 'Reagendar (nova visita)'}</p>
+              <p className="text-xs text-neutral-500 -mt-1.5">
+                {editing.status === 'concluido'
+                  ? 'Ex.: o cliente pediu outra limpeza ou faltou algo. Esta visita continua concluída, com fotos e assinatura.'
+                  : 'A tentativa que não deu certo continua no histórico, com o motivo. Uma nova visita é criada com os mesmos dados.'}
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                <input type="date" aria-label="Dia da nova visita" value={redo.date} onChange={e => setRedo(r => ({ ...r, date: e.target.value }))}
+                  className="bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded px-3 py-2 text-sm" />
+                <input type="time" aria-label="Hora marcada da nova visita" value={redo.timeWindow} onChange={e => setRedo(r => ({ ...r, timeWindow: e.target.value }))}
+                  className="bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded px-3 py-2 text-sm w-28" />
+              </div>
+              <div className="flex gap-1.5 flex-wrap">
+                {TEAMS.map(t => (
+                  <button key={t.id} type="button" onClick={() => setRedo(r => ({ ...r, teamId: t.id }))} aria-pressed={redo.teamId === t.id}
+                    className="flex-1 px-2 py-1.5 rounded text-xs font-medium border-2"
+                    style={{ borderColor: redo.teamId === t.id ? t.color : 'transparent', background: t.bg, color: t.text }}>
+                    {t.name.replace('Equipe ', '')}
+                  </button>
+                ))}
+              </div>
+              <input value={redo.reason} onChange={e => setRedo(r => ({ ...r, reason: e.target.value }))} aria-label="Motivo"
+                placeholder={editing.status === 'concluido' ? 'Motivo (ex.: cliente pediu limpeza extra)' : 'Motivo (ex.: cliente ausente, voltar amanhã)'}
+                className="bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded px-3 py-2 text-sm" />
+              {redoError && <p className="text-xs text-red-500">{redoError}</p>}
+              <button type="button" onClick={submitRedo} disabled={!redo.date || redoBusy}
+                className="self-start px-4 py-2 text-sm rounded bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white font-medium">
+                {redoBusy ? 'Criando...' : 'Criar nova visita'}
+              </button>
+            </div>
+          )}
 
           {editing?.status === 'concluido' && (
             <div className="border-t border-neutral-200 dark:border-neutral-800 pt-4">
@@ -716,14 +786,14 @@ function AppointmentModal({ modal, clients, taskTypes, appointments, base, onClo
           )}
         </div>
         <div className="flex items-center justify-between px-5 py-4 border-t border-neutral-200 dark:border-neutral-800">
-          {editing ? (
+          {editing && !finalized ? (
             <button onClick={() => onDelete(editing.id)} className="text-red-400 hover:text-red-300 text-sm flex items-center gap-1">
               <Trash2 size={14}/> Remover
             </button>
           ) : <span/>}
           <div className="flex gap-2">
             <button onClick={onClose} className="px-3 py-2 text-sm rounded border border-neutral-300 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-800">Cancelar</button>
-            <button onClick={handleSave} disabled={!clientId} className="px-4 py-2 text-sm rounded bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white font-medium">Salvar</button>
+            <button onClick={handleSave} disabled={!clientId} className="px-4 py-2 text-sm rounded bg-brand-600 hover:bg-brand-500 disabled:opacity-40 text-white font-medium">{finalized ? 'Salvar observações' : 'Salvar'}</button>
           </div>
         </div>
       </div>
@@ -1703,7 +1773,8 @@ function computeWeekSuggestion(weekDates, appointments, clients, taskTypes, base
   const clientById = {};
   clients.forEach(c => { clientById[c.id] = c; });
 
-  const weekAppts = appointments.filter(a => weekDates.includes(a.date));
+  // Só visitas em aberto entram na sugestão: concluídas e não realizadas são registro e não se movem
+  const weekAppts = appointments.filter(a => weekDates.includes(a.date) && !['concluido', 'nao_realizado', 'cancelado'].includes(a.status));
   const geolocated = weekAppts.filter(a => {
     const c = stopOf(a, clientById);
     return c && c.lat && c.lon;
