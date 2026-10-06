@@ -1,13 +1,1754 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="/logo.png" />
-  <title>Flex Locações</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Plataforma de Propostas — Flex Solar</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#F5821F">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Flex Solar">
+<script src="config.js"></script>
+<script src="admin.js" defer></script>
+<script src="operacao.js" defer></script>
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#F3F4F6; --card:#FFFFFF; --ink:#1F2937; --ink2:#6B7280; --line:#E5E7EB;
+  --orange:#F5821F; --orange-d:#D96B0C; --orange-soft:#FDEBDC; --navy:#1F2A44;
+  --field:#FFFFFF; --danger:#B42318; --ok:#067647;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#111827; --card:#1B2433; --ink:#F3F4F6; --ink2:#A3ADBD; --line:#2D3848;
+    --orange:#F7943C; --orange-d:#F7943C; --orange-soft:#3A2A1C; --navy:#C9D3E6; --field:#111827; --danger:#F97066; --ok:#47CD89;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111827; --card:#1B2433; --ink:#F3F4F6; --ink2:#A3ADBD; --line:#2D3848;
+  --orange:#F7943C; --orange-d:#F7943C; --orange-soft:#3A2A1C; --navy:#C9D3E6; --field:#111827; --danger:#F97066; --ok:#47CD89;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Arial,Helvetica,"Liberation Sans",sans-serif;font-size:15px;line-height:1.5}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--orange);outline-offset:2px}
+
+/* ---------- barra superior ---------- */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;background:var(--card);border-bottom:1px solid var(--line)}
+.top-in{max-width:1180px;margin:0 auto;padding:10px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.top img{height:34px;width:auto;display:block;background:#fff;border-radius:4px}
+.top .app-name{font-weight:700;color:var(--ink2);font-size:.95rem;border-left:1px solid var(--line);padding-left:14px}
+.top nav{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.tab{border:none;background:none;padding:8px 12px;border-radius:6px;cursor:pointer;color:var(--ink2);font-weight:600}
+.tab[aria-current="page"]{background:var(--orange-soft);color:var(--orange-d)}
+.tab:disabled{opacity:.4;cursor:default}
+
+.wrap{max-width:1180px;margin:0 auto;padding:24px 20px 80px}
+.btn{border:1px solid var(--orange);background:var(--orange);color:#fff;font-weight:700;padding:10px 16px;border-radius:6px;cursor:pointer}
+.btn:hover{background:var(--orange-d);border-color:var(--orange-d)}
+.btn.sec{background:transparent;color:var(--ink);border-color:var(--line)}
+.btn.sec:hover{border-color:var(--ink2)}
+.btn.link{background:none;border:none;color:var(--orange-d);padding:6px 8px}
+.btn.del{background:none;border:none;color:var(--danger);padding:6px 8px}
+.btn:disabled{opacity:.5;cursor:wait}
+.bar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:18px}
+.bar h1{font-size:1.4rem;margin:0 auto 0 0}
+.status-msg{font-size:.9rem;color:var(--ink2)}
+
+/* ---------- lista ---------- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px}
+.list-wrap{overflow-x:auto}
+table.list{width:100%;border-collapse:collapse;min-width:760px}
+table.list th,table.list td{padding:12px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}
+table.list th{font-size:.82rem;color:var(--ink2);font-weight:600}
+table.list tr:last-child td{border-bottom:none}
+table.list td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+#view-list,#view-audit{max-width:1400px}
+table.list{min-width:1080px}
+table.list td .sub{display:block;font-size:.8rem;color:var(--ink2)}
+table.list .acoes .btn{padding:6px 6px}
+table.list td{white-space:nowrap}
+select.st{font-size:.84rem;font-weight:700;padding:5px 8px;border-radius:99px;border:1px solid transparent;cursor:pointer;max-width:200px}
+select.st:disabled{opacity:.6;cursor:wait}
+[data-tone="gray"]{background:#EEF0F3;color:#374151}
+[data-tone="blue"]{background:#E0EAFF;color:#2A4BA0}
+[data-tone="amber"]{background:#FEF0C7;color:#93370D}
+[data-tone="green"]{background:#DCFAE6;color:#067647}
+[data-tone="red"]{background:#FEE4E2;color:#B42318}
+.who{font-size:.85rem;color:var(--ink2);align-self:center;padding:0 4px 0 10px}
+.audit-search{flex:1 1 260px;max-width:420px;padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:var(--field)}
+table.audit{width:100%;border-collapse:collapse;min-width:900px}
+table.audit th,table.audit td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top;font-size:.92rem}
+table.audit th{font-size:.82rem;color:var(--ink2);font-weight:600}
+table.audit td.quando{white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink2)}
+.acao{display:inline-block;font-size:.8rem;font-weight:700;padding:2px 9px;border-radius:99px}
+.alt{margin:0 0 3px}
+.alt b{font-weight:600}
+.alt s{color:var(--ink2)}
+.filtro-ativo{background:var(--orange-soft);padding:8px 12px;border-radius:8px;font-size:.9rem;margin-bottom:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.empty{padding:48px 24px;text-align:center}
+.empty p{color:var(--ink2);max-width:46ch;margin:8px auto 20px}
+.products{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:28px}
+.prod{padding:16px;border:1px solid var(--line);border-radius:10px;background:var(--card);text-align:left;font:inherit;color:inherit;width:100%}
+button.prod{cursor:pointer;transition:border-color .15s,box-shadow .15s}
+button.prod:hover{border-color:var(--orange);box-shadow:0 2px 10px rgba(245,130,31,.15)}
+.prod em{display:block;font-style:normal;font-size:.82rem;font-weight:700;color:var(--orange-d);margin-top:8px}
+.prod strong{display:block}
+.prod span{font-size:.85rem;color:var(--ink2)}
+.prod.soon{opacity:.55}
+
+/* ---------- formulário ---------- */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.fs{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+.fs.full{grid-column:1/-1}
+.fs h2{font-size:1.05rem;margin:0 0 4px;color:var(--orange-d)}
+.fs .hint{font-size:.85rem;color:var(--ink2);margin:0 0 12px}
+.fields{display:grid;grid-template-columns:repeat(6,1fr);gap:10px 12px}
+.f{grid-column:span 6}
+.f.s3{grid-column:span 3}.f.s2{grid-column:span 2}.f.s4{grid-column:span 4}.f.s1{grid-column:span 1}
+.f label{display:block;font-size:.83rem;color:var(--ink2);margin-bottom:3px;font-weight:600}
+.f input,.f select,.f textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--field)}
+.f textarea{min-height:64px;resize:vertical}
+.f .inline{display:flex;gap:6px}
+.f .inline input{flex:1}
+.logo-box{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.logo-prev{width:150px;height:70px;border:1px dashed var(--line);border-radius:6px;display:grid;place-items:center;background:#fff;overflow:hidden}
+.logo-prev img{max-width:100%;max-height:100%}
+.logo-prev span{font-size:.8rem;color:#888}
+.total-box{margin-top:12px;padding:12px 14px;border-radius:8px;background:var(--orange-soft);font-weight:700;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap}
+details.fs summary{cursor:pointer;font-weight:700;color:var(--orange-d)}
+details.fs[open] summary{margin-bottom:12px}
+.sticky-actions{position:sticky;bottom:env(safe-area-inset-bottom,0px);background:var(--bg);padding:12px 0;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid var(--line);margin-top:18px}
+
+/* ---------- pré-visualização ---------- */
+.preview-scroll{overflow-x:auto;padding:4px 0 20px}
+.sheet{background:#fff;width:794px;margin:0 auto;box-shadow:0 2px 18px rgba(0,0,0,.12);padding:53px 60px}
+.edit-note{font-size:.88rem;color:var(--ink2);margin:0 0 14px}
+
+/* ---------- PROPOSTA (réplica do modelo Word) ---------- */
+.proposta{width:674px;color:#262626;font-family:Arial,Helvetica,"Liberation Sans",sans-serif;font-size:12.4px;line-height:1.5;background:#fff}
+.proposta *{box-sizing:border-box}
+.proposta[contenteditable="true"]:focus{outline:2px dashed #F5B27A;outline-offset:8px}
+.proposta .capa{text-align:center;padding:6px 0 36px}
+.proposta .capa .logo-flex{width:330px;height:auto;display:block;margin:0 auto 44px}
+.proposta .capa .t1{color:#F28A1E;font-weight:700;font-size:30px;line-height:1.3;text-transform:uppercase;margin:0 0 12px}
+.proposta .capa .t2{color:#7F7F7F;font-weight:700;font-size:20px;text-transform:uppercase;margin:0 0 8px}
+.proposta .capa .tags{color:#7F7F7F;font-style:italic;font-size:13.5px;margin:0 0 56px}
+.proposta .capa .logo-cli{max-width:220px;max-height:100px;display:block;margin:0 auto 6px}
+.proposta .capa .slogan{font-style:italic;font-size:13.5px;margin:0 auto 28px;max-width:640px}
+.proposta table.info{width:100%;border-collapse:collapse;text-align:left;font-size:13px}
+.proposta table.info td{border:1px solid #000;padding:3px 8px;vertical-align:top;font-weight:700}
+.proposta table.info td.k{background:#F5821F;color:#fff;width:31%;text-transform:uppercase}
+.proposta table.info td.v{background:#FCE9D9;color:#1a1a1a}
+.proposta .pb{page-break-after:always;break-after:page}
+.proposta h2{font-size:15.5px;font-weight:700;color:#333;text-transform:uppercase;margin:22px 0 14px;padding-bottom:4px;border-bottom:1.5px solid #F5B27A}
+.proposta h2.first{margin-top:0}
+.proposta h3{font-size:12.8px;font-weight:700;color:#E07B24;margin:16px 0 6px}
+.proposta p{margin:0 0 8px;text-align:justify}
+.proposta p.lead{font-style:italic;color:#8C8C8C;font-size:11.5px;text-align:left}
+.proposta ul{margin:6px 0 10px;padding-left:22px}
+.proposta li{margin-bottom:3px;text-align:justify}
+.proposta table.grid{width:100%;border-collapse:collapse;font-size:11.4px;margin:4px 0 12px}
+.proposta table.grid th{background:#1F2A44;color:#fff;text-align:left;padding:4px 6px;font-weight:700;border:1px solid #1F2A44}
+.proposta table.grid td{border:1px solid #333;padding:4px 6px;vertical-align:top}
+.proposta table.grid td.c{width:34px}
+.proposta table.inv td.l{font-weight:700;width:36px}
+.proposta table.inv td.val{background:#FCE9D9;width:120px}
+.proposta table.inv tr.soft td.d{background:#FCE9D9}
+.proposta table.inv tr.tot td{background:#1F2A44;color:#fff;font-weight:700;text-transform:uppercase;border-color:#1F2A44}
+.proposta table.inv tr.tot td.val{background:#FCE9D9;color:#1a1a1a}
+.proposta .cond{font-weight:700;color:#E07B24;margin:14px 0 4px}
+.proposta hr{border:none;border-top:1px solid #BDBDBD;margin:10px 0 14px}
+.proposta .aceite{margin-top:18px}
+.proposta .sigs{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin:48px 0 24px;text-align:center;font-weight:700;font-size:12px}
+.proposta .sigs div{border-top:1px solid #000;padding-top:4px}
+.proposta .contato{margin-top:10px;font-size:12px}
+.proposta .contato strong{color:#E07B24;display:block;margin-bottom:2px}
+.proposta .blk{page-break-inside:avoid;break-inside:avoid}
+
+.login{max-width:400px;margin:56px auto;padding:28px}
+.login h1{margin:0 0 6px;font-size:1.4rem}
+.login p{color:var(--ink2);margin:0 0 18px}
+.login .btn{width:100%;margin-top:14px}
+/* ---------- administração ---------- */
+#view-admin{max-width:1400px}
+.subtabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--line);margin:-4px 0 18px}
+.subtab{border:none;background:none;padding:10px 14px;font-weight:700;color:var(--ink2);cursor:pointer;border-bottom:3px solid transparent;margin-bottom:-1px}
+.subtab[aria-selected="true"]{color:var(--orange-d);border-bottom-color:var(--orange)}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.toolbar .grow{flex:1}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:6px 12px;font-size:.88rem;font-weight:600;cursor:pointer;color:var(--ink2)}
+.chip[aria-pressed="true"]{background:var(--orange-soft);border-color:var(--orange);color:var(--orange-d)}
+.adm-search{padding:9px 12px;border:1px solid var(--line);border-radius:6px;background:var(--field);min-width:220px}
+table.adm{width:100%;border-collapse:collapse;min-width:900px}
+table.adm th,table.adm td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle;font-size:.93rem}
+table.adm th{font-size:.8rem;color:var(--ink2);font-weight:600}
+table.adm td.n,table.adm th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.adm tr.inativo td{opacity:.5}
+.tag{display:inline-block;font-size:.76rem;font-weight:700;padding:2px 8px;border-radius:99px}
+.aviso{background:var(--orange-soft);border-radius:8px;padding:10px 14px;font-size:.9rem;margin-bottom:14px}
+.aviso.ok{background:#DCFAE6;color:#054F31}
+.aviso.erro{background:#FEE4E2;color:#7A271A}
+.card-pad{padding:18px 20px}
+.param-grid{display:grid;grid-template-columns:1.2fr 1fr;gap:18px}
+.sim{font-variant-numeric:tabular-nums}
+.sim table{width:100%;border-collapse:collapse}
+.sim td{padding:6px 0;border-bottom:1px dashed var(--line)}
+.sim td.n{text-align:right}
+.sim tr.total td{font-weight:800;border-bottom:none;font-size:1.05rem;padding-top:10px}
+.radio-row{display:flex;gap:14px;flex-wrap:wrap}
+.radio-row label{display:flex;gap:6px;align-items:flex-start;font-weight:600;color:var(--ink);cursor:pointer}
+.radio-row small{display:block;font-weight:400;color:var(--ink2)}
+dialog.modal{border:none;border-radius:12px;padding:0;width:min(640px,calc(100vw - 24px));max-height:calc(100vh - 40px);background:var(--card);color:var(--ink);box-shadow:0 20px 60px rgba(0,0,0,.3)}
+dialog.modal.largo{width:min(920px,calc(100vw - 24px))}
+dialog.modal::backdrop{background:rgba(17,24,39,.5)}
+.modal-head{padding:18px 22px 4px;display:flex;justify-content:space-between;align-items:center;gap:10px}
+.modal-head h2{margin:0;font-size:1.15rem}
+.modal-body{padding:10px 22px 6px;overflow:auto;max-height:calc(100vh - 190px)}
+.modal-foot{padding:14px 22px 18px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;border-top:1px solid var(--line)}
+.modal-foot .msg{margin-right:auto;align-self:center;font-size:.9rem;color:var(--danger)}
+.x{border:none;background:none;font-size:1.4rem;line-height:1;cursor:pointer;color:var(--ink2);padding:4px 8px}
+.kit-row{display:grid;grid-template-columns:1fr 90px 110px 34px;gap:8px;align-items:center;margin-bottom:8px}
+.kit-row input,.kit-row select{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:var(--field)}
+.kit-row .n{text-align:right;font-variant-numeric:tabular-nums;font-size:.9rem}
+.who-btn{border:none;background:none;cursor:pointer;color:var(--ink2);font-size:.85rem;padding:6px 8px;border-radius:6px}
+.who-btn:hover{background:var(--orange-soft)}
+@media (max-width:820px){ .param-grid{grid-template-columns:1fr} .kit-row{grid-template-columns:1fr 70px 34px} .kit-row .n{display:none} }
+/* ---------- orçamento solar ---------- */
+.sol-res{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.sol-res>div{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--field)}
+.sol-res span{display:block;font-size:.78rem;color:var(--ink2);font-weight:600}
+.sol-res strong{display:block;font-size:1.1rem}
+.sol-res small{display:block;font-size:.78rem;color:var(--ink2)}
+.sol-res .preco{background:var(--orange-soft);border-color:var(--orange)}
+.sol-res .preco strong{font-size:1.35rem;color:var(--orange-d)}
+details.custos{margin-top:12px}
+details.custos summary{cursor:pointer;font-weight:700;color:var(--ink2)}
+@media (max-width:820px){ .sol-res{grid-template-columns:1fr 1fr} }
+.proposta .sol{font-size:12px;color:#000}
+.proposta .sol .pg{position:relative;padding-bottom:30px;margin-bottom:30px;border-bottom:1px dashed #ccc;break-after:page;page-break-after:always}
+.proposta .sol .pg:last-child{border-bottom:none;break-after:auto;page-break-after:auto}
+.proposta .sol .topo{text-align:center;margin-bottom:14px}
+.proposta .sol .topo img{width:66%;height:auto}
+.proposta .sol .tit{font-size:13px;font-weight:700;text-align:center;margin:10px 0 18px;color:#000;text-transform:none}
+.proposta .sol table{border-collapse:collapse;width:100%}
+.proposta .sol .cli th{text-align:left;font-weight:700;padding:1px 6px 1px 0;width:16%;white-space:nowrap;font-size:12px}
+.proposta .sol .cli td{padding:1px 10px 1px 0;width:34%;font-size:12px}
+.proposta .sol .intro{width:100%;display:block;margin:22px 0 22px}
+.proposta .sol .ciclo{width:80%;display:block;margin:0 auto 14px}
+.proposta .sol .cen{text-align:center;font-weight:700;font-size:12.5px;border:none;margin:10px 0}
+.proposta .sol ul.bol{padding-left:18px}
+.proposta .sol ul.bol li{margin-bottom:8px}
+.proposta .sol .ug{text-align:left;margin-bottom:6px}
+.proposta .sol .res td{border:1px solid #000;padding:2px 6px}
+.proposta .sol .res td.v{text-align:right;width:20%}
+.proposta .sol .res td:last-child{width:14%}
+.proposta .sol .nota{font-size:10px;color:#555;margin-top:4px}
+.proposta .sol h3{color:#000;font-size:12px;margin:16px 0 8px}
+.proposta .sol .itn{border:1px solid #000}
+.proposta .sol .itn td{border:1px solid #000;padding:2px 6px}
+.proposta .sol .itn td.q{width:9%;text-align:right}
+.proposta .sol .itn td.u{width:8%}
+.proposta .sol .itn td.dt{width:16%;white-space:nowrap}
+.proposta .sol .prc th{background:#BFBFBF;border:1px solid #000;padding:3px 6px;text-align:left}
+.proposta .sol .prc td{border:1px solid #000;padding:3px 6px}
+.proposta .sol .prc td.c{text-align:center}
+.proposta .sol .prc td.n{text-align:right;width:18%}
+.proposta .sol .prc tr.tot td{font-weight:700}
+.proposta .sol .cnd p{margin:0 0 5px}
+.proposta .sol .cnd p.t{margin-top:8px}
+.proposta .sol .cnd .v{font-weight:400}
+.proposta .sol .contato-sol{margin-top:240px;border-top:2px solid #BFBFBF;padding-top:8px;width:60%}
+@media print{ .proposta .sol .pg{border-bottom:none;margin-bottom:0;padding-bottom:0} }
+/* ---------- relatórios ---------- */
+#view-rel{max-width:1400px}
+#relTipos .chip{font-size:.95rem;padding:8px 14px}
+.chip:disabled{opacity:.5;cursor:not-allowed}
+.rel-doc{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:20px 22px}
+.rel-cab{display:flex;gap:18px;align-items:center;margin-bottom:14px}
+.rel-cab img{height:44px;width:auto;background:#fff;border-radius:4px}
+.rel-cab h2{margin:0 0 2px;font-size:1.25rem}
+.rel-cab p{margin:0;font-size:.9rem}
+.rel-resumo{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:14px}
+.rel-resumo>div{border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+.rel-resumo span{display:block;font-size:.78rem;color:var(--ink2);font-weight:600}
+.rel-resumo strong{font-size:1.2rem}
+.rel-tab td:first-child{white-space:nowrap}
+.rel-tab tr.rel-tot td{font-weight:800;border-top:2px solid var(--ink);border-bottom:none}
+@media print{
+  body.print-rel #view-preview{display:none!important}
+  body.print-rel #view-rel{display:block!important;max-width:none;padding:0}
+  body.print-rel #view-rel .bar, body.print-rel .rel-filtros{display:none!important}
+  body.print-rel .rel-doc{border:none;padding:0;background:#fff;color:#000}
+  body.print-rel .list-wrap{overflow:visible}
+  body.print-rel table.adm{min-width:0;font-size:10.5px}
+  body.print-rel table.adm th,body.print-rel table.adm td{padding:5px 6px;color:#000;border-color:#ccc}
+  body.print-rel table.adm tr{break-inside:avoid}
+  body.print-rel table.adm thead{display:table-header-group}
+  body.print-rel .rel-resumo>div{border-color:#ccc}
+}
+/* ---------- listas com pesquisa ---------- */
+.ss-wrap{display:block;position:relative;min-width:0}
+.ss-oculto{position:absolute!important;inset:0;opacity:0!important;pointer-events:none!important;width:100%!important}
+.ss-btn{display:block;width:100%;text-align:left;padding:8px 30px 8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--field);color:var(--ink);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative;font:inherit;min-height:38px}
+.ss-btn::after{content:"";position:absolute;right:11px;top:50%;width:7px;height:7px;border-right:2px solid var(--ink2);border-bottom:2px solid var(--ink2);transform:translateY(-70%) rotate(45deg)}
+.ss-btn:disabled{opacity:.6;cursor:default}
+.kit-row .ss-btn{padding-top:7px;padding-bottom:7px;min-height:0}
+.ss-pop{position:fixed;z-index:1000;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:10px;box-shadow:0 14px 40px rgba(0,0,0,.22);display:flex;flex-direction:column;overflow:hidden}
+.ss-topo{display:flex;align-items:center;gap:4px;padding-right:6px}
+.ss-topo .ss-q{flex:1}
+.ss-fechar{border:none;background:none;font-size:1.5rem;line-height:1;color:var(--ink2);cursor:pointer;padding:4px 8px}
+.ss-pop:not(.ss-cel) .ss-fechar{display:none}
+.ss-pop.ss-cel .ss-lista li{padding:11px 10px;font-size:1rem}
+.ss-pop.ss-cel .ss-q{font-size:16px}
+.ss-q{margin:8px;padding:9px 11px;border:1px solid var(--orange);border-radius:6px;background:var(--field);color:var(--ink);font:inherit}
+.ss-lista{list-style:none;margin:0;padding:0 6px;overflow:auto;flex:1}
+.ss-lista li{padding:7px 9px;border-radius:6px;cursor:pointer;font-size:.92rem;line-height:1.35}
+.ss-lista li.at{background:var(--orange-soft)}
+.ss-lista li.sel{font-weight:700}
+.ss-lista li.dis{opacity:.45;cursor:default}
+.ss-lista li.vazio{color:var(--ink2);cursor:default}
+.ss-lista mark{background:#FFE08A;color:inherit;border-radius:2px;padding:0}
+.ss-info{font-size:.78rem;color:var(--ink2);padding:6px 12px 8px;border-top:1px solid var(--line)}
+table.comp tr.sub td{font-weight:700;border-top:2px solid var(--line)}
+table.comp tr.tot td{font-weight:800;font-size:1.02rem;border-top:2px solid var(--ink);border-bottom:none}
+.negocia{margin-top:12px;border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--card)}
+.neg-cab{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;margin-bottom:8px}
+.neg-linha{display:flex;gap:12px;align-items:center}
+.neg-linha input[type=range]{flex:1;accent-color:var(--orange)}
+.neg-lim{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
+.neg-lim small{display:block;font-weight:600;font-size:.74rem;color:var(--ink2)}
+.neg-lim.dir{text-align:right}
+.neg-linha2{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.neg-linha2 label{font-size:.85rem;font-weight:600;color:var(--ink2)}
+.neg-linha2 input{width:150px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--field)}
+/* ---------- O.S. e estoque ---------- */
+#view-os,#view-estoque{max-width:1400px}
+.prog{display:inline-block;width:90px;height:8px;border-radius:99px;background:var(--line);overflow:hidden;vertical-align:middle;margin-right:6px}
+.prog span{display:block;height:100%;background:var(--orange)}
+.os-cab{display:grid;grid-template-columns:repeat(4,1fr) 96px;gap:14px;margin-bottom:16px;align-items:start}
+.os-qr img,.os-qr canvas{width:92px!important;height:92px!important}
+.os-cab span{display:block;font-size:.78rem;color:var(--ink2);font-weight:600}
+.os-cab strong{display:block}
+.os-cab small{display:block;color:var(--ink2);font-size:.82rem}
+.os-grid{display:grid;grid-template-columns:minmax(300px,0.9fr) 1.3fr;gap:16px;align-items:start}
+.os-h{font-size:1.05rem;margin:0 0 12px;color:var(--orange-d)}
+.etapas{list-style:none;margin:0;padding:0}
+.et{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.et:last-child{border-bottom:none}
+.et-n{flex:none;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:800;background:var(--line);color:var(--ink2)}
+.et.andamento .et-n{background:#FEF0C7;color:#93370D}
+.et.concluida .et-n{background:#DCFAE6;color:#067647}
+.et-c{flex:1;min-width:0}
+.et-l{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.et-b .btn{padding:4px 8px 0 0}
+.nota-nova{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.nota-nova select,.nota-nova input{padding:8px 10px;border:1px solid var(--line);border-radius:6px;background:var(--field)}
+.nota-nova input{flex:1;min-width:200px}
+.timeline{list-style:none;margin:0;padding:0 0 0 14px;border-left:2px solid var(--line)}
+.ev{position:relative;padding:0 0 14px 12px}
+.ev::before{content:"";position:absolute;left:-21px;top:4px;width:10px;height:10px;border-radius:50%;background:var(--line);border:2px solid var(--card)}
+.ev.etapa::before{background:var(--orange)}.ev.estoque::before{background:#2A4BA0}.ev.nota::before{background:#067647}.ev.situacao::before{background:#93370D}
+.ev-h{font-size:.84rem;color:var(--ink2);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.ev-t{margin-top:2px}
+.mov-row{grid-template-columns:1fr 110px 170px 34px}
+@media (max-width:900px){ .os-grid{grid-template-columns:1fr} .os-cab{grid-template-columns:1fr 1fr} }
+@media print{
+  body.print-os #view-preview{display:none!important}
+  body.print-os #view-os{display:block!important;max-width:none;padding:0}
+  body.print-os #view-os .bar .btn, body.print-os .nota-nova, body.print-os .et-b, body.print-os #osSaida{display:none!important}
+  body.print-os .card{border:none;box-shadow:none;padding:0 0 10px}
+  body.print-os .os-grid{grid-template-columns:1fr}
+  body.print-os table.adm{min-width:0;font-size:10.5px}
+  body.print-rel #view-rel .rel-filtros{display:none!important}
+}
+/* ---------- leitura pela câmera ---------- */
+.leitor{position:relative;background:#111;border-radius:10px;overflow:hidden;aspect-ratio:16/10;max-height:42vh;display:flex;align-items:center;justify-content:center}
+.leitor video{width:100%;height:100%;object-fit:cover;display:none}
+.leitor.on video{display:block}
+.leitor .mira{position:absolute;inset:18% 12%;border:3px solid rgba(255,255,255,.85);border-radius:12px;box-shadow:0 0 0 999px rgba(0,0,0,.25);display:none}
+.leitor.on .mira{display:block}
+.leitor-msg{position:absolute;bottom:8px;left:0;right:0;text-align:center;color:#fff;font-size:.9rem;text-shadow:0 1px 3px #000}
+.leitor-bar{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.leitor-bar input{flex:1;min-width:200px;padding:9px 11px;border:1px solid var(--line);border-radius:6px;background:var(--field)}
+.leitura-sinal{margin-top:10px;padding:10px 12px;border-radius:8px;font-weight:700;background:var(--panel,#f6f8fb);border:1px solid var(--line)}
+.leitura-sinal.ok{background:#DCFAE6;color:#054F31;border-color:#A6F4C5}
+.leitura-sinal.erro{background:#FEE4E2;color:#7A271A;border-color:#FDA29B}
+.leitura-sinal.aviso{background:#FEF0C7;color:#7A2E0E;border-color:#FEC84B}
+.leitura-sinal.info{background:#E0EAFF;color:#2A4BA0;border-color:#B2CCFF}
+.lido{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-bottom:8px}
+.lido.ok{border-color:#A6F4C5;background:#F6FEF9}
+.lido-h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.lido-h .x{margin-left:auto}
+.lido-q{width:90px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--field)}
+.chips-serie{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.serie{display:inline-flex;gap:4px;align-items:center;font-family:ui-monospace,Consolas,monospace;font-size:.8rem;background:var(--line);border-radius:6px;padding:3px 4px 3px 8px}
+.serie small{font-family:inherit;color:var(--ink2)}
+.serie button{border:none;background:none;cursor:pointer;color:var(--ink2);font-size:1rem;line-height:1;padding:0 4px}
+dialog.modal.leitura{width:min(760px,calc(100vw - 12px))}
+@media (max-width:600px){ dialog.modal.leitura{max-height:calc(100vh - 8px)} dialog.modal.leitura .modal-body{max-height:calc(100vh - 150px)} }
+#etqBox{display:none}
+@media print{
+  body.print-etq > *:not(#etqBox){display:none!important}
+  body.print-etq #etqBox{display:grid!important;grid-template-columns:repeat(3,70mm);grid-auto-rows:37mm;gap:0}
+  body.print-etq .etq{display:flex;gap:3mm;align-items:center;padding:3mm;box-sizing:border-box;overflow:hidden;break-inside:avoid}
+  body.print-etq .etq-qr img,body.print-etq .etq-qr canvas{width:28mm!important;height:28mm!important}
+  body.print-etq .etq-t{display:flex;flex-direction:column;font-size:8pt;line-height:1.2;color:#000}
+  body.print-etq .etq-t strong{font-size:8.5pt;word-break:break-all}
+  body.print-etq .etq-t small{color:#555;margin-top:2mm}
+  body.print-os .os-cab{grid-template-columns:repeat(4,1fr) 96px}
+}
+/* ---------- app instalado (PWA) ---------- */
+.offline{position:fixed;left:0;right:0;bottom:0;z-index:2000;background:#7A271A;color:#fff;text-align:center;padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));font-weight:700;font-size:.92rem}
+.ios-dica{position:fixed;left:10px;right:10px;bottom:calc(12px + env(safe-area-inset-bottom,0px));z-index:1500;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.2);padding:12px 12px 12px 16px;display:flex;gap:10px;align-items:center;font-size:.92rem}
+#btnInstalar{color:var(--orange-d)}
+@media (display-mode: standalone){ #btnInstalar{display:none!important} }
+@media (max-width:820px){ .top-in{padding:8px 12px;gap:8px} .top nav{gap:2px} .tab{padding:7px 9px;font-size:.92rem} }
+@media print{ .offline,.ios-dica{display:none!important} }
+.badge{display:inline-block;min-width:20px;padding:1px 6px;border-radius:99px;background:#DC2626;color:#fff;font-size:.75rem;font-weight:800;text-align:center;vertical-align:1px}
+.eq-dot{display:inline-block;width:10px;height:10px;border-radius:50%;border:1px solid rgba(0,0,0,.25);vertical-align:-1px;margin-right:2px}
+.fila{margin-bottom:16px;border-color:var(--orange)}
+.fila-lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.fila-item{display:flex;flex-direction:column;gap:2px;text-align:left;font:inherit;color:inherit;background:var(--orange-soft);border:1px solid var(--orange);border-radius:10px;padding:10px 12px;cursor:pointer}
+.fila-item:hover{box-shadow:0 2px 10px rgba(245,130,31,.2)}
+.fila-n{font-size:.78rem;font-weight:800;color:var(--orange-d)}
+.et.minha{background:var(--orange-soft);border-radius:8px;padding-left:8px;padding-right:8px}
+.senha-wrap{position:relative;display:block}
+.senha-wrap input{width:100%;padding-right:44px!important}
+.olho{position:absolute;right:4px;top:50%;transform:translateY(-50%);border:none;background:none;color:var(--ink2);cursor:pointer;padding:6px;display:grid;place-items:center;border-radius:6px}
+.olho:hover{color:var(--ink);background:var(--orange-soft)}
+.check-linha{display:flex;gap:10px;align-items:flex-start;margin:16px 0 0;padding:12px 14px;border:1px solid var(--line);border-radius:8px;cursor:pointer}
+.check-linha input{width:18px;height:18px;margin-top:2px;accent-color:var(--orange)}
+.et.atrasada{background:#FEF3F2;border-radius:8px;padding-left:8px;padding-right:8px}
+.prazo-in{width:90px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--field);text-align:right}
+/* ---------- solicitação de compra ---------- */
+#solBox{display:none}
+.sol-prev{border:1px solid var(--line);border-radius:8px;padding:16px;background:#fff;color:#111;overflow-x:auto}
+.sol-doc{font-size:12.5px;color:#111}
+.sol-cab{display:flex;gap:16px;align-items:center;border-bottom:2px solid #F5821F;padding-bottom:10px;margin-bottom:10px}
+.sol-cab img{height:40px;width:auto}
+.sol-cab h2{margin:0;font-size:16px;color:#1F2A44}
+.sol-num{margin:2px 0 0;font-weight:800;color:#D96B0C}
+.sol-info{width:100%;border-collapse:collapse;margin-bottom:10px}
+.sol-info th,.sol-info td{border:1px solid #ccc;padding:4px 7px;text-align:left;vertical-align:top}
+.sol-info th{background:#F3F4F6;width:16%;white-space:nowrap}
+.sol-itens{width:100%;border-collapse:collapse;min-width:560px}
+.sol-itens th{background:#1F2A44;color:#fff;padding:5px 7px;text-align:left;font-size:11.5px}
+.sol-itens td{border-bottom:1px solid #ddd;padding:5px 7px;vertical-align:top}
+.sol-itens .n{text-align:right;white-space:nowrap}
+.sol-itens tr.ok td{color:#777}
+.sol-itens tr.tot td{font-weight:800;border-top:2px solid #1F2A44;border-bottom:none}
+.sol-itens small{color:#777}
+.sol-itens td:first-child{width:44%}
+.sol-itens td:first-child strong{font-size:10.5px;white-space:nowrap}
+.sol-obs{font-size:10.5px;color:#555;margin:10px 0 0}
+.sol-ass{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:40px}
+.sol-ass div{border-top:1px solid #333;padding-top:4px;font-size:11px}
+@media print{
+  body.print-sol > *:not(#solBox){display:none!important}
+  body.print-sol #solBox{display:block!important}
+  body.print-sol .sol-itens{min-width:0}
+  body.print-sol .sol-itens tr{break-inside:avoid}
+}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#1F2937;color:#fff;padding:10px 16px;border-radius:8px;font-size:.92rem;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.on{opacity:1}
+[hidden]{display:none!important}
+
+@media (max-width:820px){
+  .form-grid{grid-template-columns:1fr}
+  .f.s3,.f.s2,.f.s4,.f.s1{grid-column:span 6}
+  .top .app-name{display:none}
+}
+@media print{
+  :root{padding:0}
+  html,body{background:#fff!important}
+  .top,.bar,.edit-note,.sticky-actions,#view-login,#view-list,#view-form,#view-audit,#view-admin,#view-rel,#view-os,#view-estoque,dialog,.toast{display:none!important}
+  #view-preview{display:block!important}
+  .wrap{padding:0;margin:0;max-width:none}
+  .preview-scroll{overflow:visible;padding:0}
+  .sheet{box-shadow:none;padding:0;margin:0;width:auto}
+  .proposta{width:auto}
+  .proposta[contenteditable]{outline:none!important}
+  .proposta .capa{min-height:0;padding-top:30px}
+  .proposta h2,.proposta h3,.proposta .cond,.proposta p.lead{break-after:avoid;page-break-after:avoid}
+  .proposta p,.proposta li,.proposta tr,.proposta .blk,.proposta table.info{break-inside:avoid;page-break-inside:avoid}
+  .proposta thead{display:table-header-group}
+  *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+@page{size:A4;margin:14mm 16mm}
+@page etiquetas{size:A4;margin:0}
+#etqBox{page:etiquetas}
+</style>
 </head>
-<body class="bg-neutral-100">
-  <div id="root"></div>
-  <script type="module" src="/src/main.jsx"></script>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <img src="flex-solar.jpg" alt="Flex Solar">
+    <span class="app-name">Plataforma de Propostas</span>
+    <nav aria-label="Seções">
+      <button class="tab" data-go="list" aria-current="page">Propostas</button>
+      <button class="tab" data-go="form" id="tabForm" disabled>Preenchimento</button>
+      <button class="tab" data-go="preview" id="tabPrev" disabled>Proposta</button>
+      <button class="tab" data-go="os" id="tabOS">O.S.</button>
+      <button class="tab" data-go="estoque" id="tabEstoque" hidden>Estoque</button>
+      <button class="tab" data-go="rel" id="tabRel">Relatórios</button>
+      <button class="tab" data-go="audit" id="tabAudit">Auditoria</button>
+      <button class="tab" data-go="admin" id="tabAdmin" hidden>Administração</button>
+      <button class="tab" id="btnInstalar" type="button" hidden>Instalar app</button>
+      <button class="who-btn" id="quem" type="button" title="Trocar minha senha"></button>
+      <button class="tab" id="btnSair" type="button">Sair</button>
+    </nav>
+  </div>
+</header>
+
+<!-- ================= LOGIN ================= -->
+<main class="wrap" id="view-login" hidden>
+  <div class="card login" id="loginNormal">
+    <h1>Entrar</h1>
+    <p>Use seu e-mail e sua senha.</p>
+    <form id="frmLogin" class="f">
+      <label for="emailLogin">E-mail</label>
+      <input id="emailLogin" type="email" autocomplete="username" required style="margin-bottom:12px">
+      <label for="senha">Senha</label>
+      <input id="senha" type="password" autocomplete="current-password" required>
+      <button class="btn" type="submit">Entrar</button>
+      <p class="status-msg" id="loginMsg" style="margin-top:12px"></p>
+    </form>
+  </div>
+  <div class="card login" id="loginSetup" hidden>
+    <h1>Primeiro acesso</h1>
+    <p>Crie o usuário administrador. Para autorizar, informe a senha da equipe usada até hoje (a do Railway, <code>APP_PASSWORD</code>).</p>
+    <form id="frmSetup" class="f">
+      <label for="stChave">Senha da equipe</label>
+      <input id="stChave" type="password" autocomplete="off" required style="margin-bottom:12px">
+      <label for="stNome">Seu nome</label>
+      <input id="stNome" autocomplete="name" maxlength="60" required style="margin-bottom:12px">
+      <label for="stEmail">Seu e-mail</label>
+      <input id="stEmail" type="email" autocomplete="username" required style="margin-bottom:12px">
+      <label for="stSenha">Sua nova senha (mínimo 8 caracteres)</label>
+      <input id="stSenha" type="password" autocomplete="new-password" minlength="8" required style="margin-bottom:12px">
+      <label for="stSenha2">Repita a senha</label>
+      <input id="stSenha2" type="password" autocomplete="new-password" minlength="8" required>
+      <button class="btn" type="submit">Criar administrador e entrar</button>
+      <p class="status-msg" id="setupMsg" style="margin-top:12px"></p>
+    </form>
+  </div>
+</main>
+
+<!-- ================= LISTA ================= -->
+<main class="wrap" id="view-list">
+  <div class="bar">
+    <h1>Propostas</h1>
+    <span class="status-msg" id="storeMsg"></span>
+    <input class="audit-search" id="listBusca" type="search" placeholder="Pesquisar nº, cliente, CNPJ ou situação">
+    <button class="btn" id="btnNova">Nova proposta</button>
+  </div>
+  <div class="card list-wrap" id="listBox"></div>
+
+  <h2 style="font-size:1.05rem;margin:32px 0 0">Produtos</h2>
+  <div class="products" id="productsBox"></div>
+</main>
+
+<!-- ================= FORMULÁRIO ================= -->
+<main class="wrap" id="view-form" hidden>
+  <div class="bar">
+    <h1 id="formTitle">Nova proposta</h1>
+    <button class="btn sec" id="btnExemplo" type="button">Preencher com exemplo</button>
+  </div>
+
+  <form id="frm" autocomplete="off" onsubmit="return false">
+  <div class="form-grid">
+
+    <section class="fs">
+      <h2>Proposta</h2>
+      <p class="hint">Identificação e validade do documento.</p>
+      <div class="fields">
+        <div class="f s3"><label for="produto">Produto</label><select id="produto" name="produto"></select></div>
+        <div class="f s3"><label for="status">Situação da proposta</label><select id="status" name="status"></select></div>
+        <div class="f s3"><label for="andamento">Andamento do projeto</label><select id="andamento" name="andamento"></select></div>
+        <div class="f s3"><label for="statusPag">Situação do pagamento</label><select id="statusPag" name="statusPag"></select></div>
+        <div class="f s2"><label for="data">Data</label><input id="data" name="data" type="date"></div>
+        <div class="f s2"><label for="sigla">Sigla do cliente</label><input id="sigla" name="sigla" maxlength="6" placeholder="JVM" style="text-transform:uppercase"></div>
+        <div class="f s2"><label for="numero">Nº da proposta</label><input id="numero" name="numero" placeholder="25-09-FLEX_JVM_001"></div>
+        <p class="hint" style="grid-column:1/-1;margin:-2px 0 0">O número é gerado sozinho: dia-mês da proposta, sigla do cliente e sequência desse cliente. A sigla sai da razão social e pode ser ajustada.</p>
+        <div class="f s3"><label for="validade">Validade (dias)</label><input id="validade" name="validade" type="number" min="1"></div>
+        <div class="f s3"><label for="cidade">Local de emissão</label><input id="cidade" name="cidade"></div>
+      </div>
+    </section>
+
+    <section class="fs">
+      <h2>Dados do cliente</h2>
+      <p class="hint">Aparecem na capa, nos textos e no campo de assinatura.</p>
+      <div class="fields">
+        <div class="f"><label for="razao">Cliente (razão social ou nome)</label><input id="razao" name="razao" placeholder="Empresa Ltda. ou nome completo"></div>
+        <div class="f s3"><label for="fantasia">Nome fantasia</label><input id="fantasia" name="fantasia"></div>
+        <div class="f s3"><label for="cnpj">CPF / CNPJ</label><input id="cnpj" name="cnpj" inputmode="numeric"></div>
+        <div class="f s3"><label for="email">E-mail</label><input id="email" name="email" type="email"></div>
+        <div class="f s3"><label for="contato">Contato (responsável)</label><input id="contato" name="contato" placeholder="Nome de quem recebe a proposta"></div>
+        <div class="f s3"><label for="telefone">Telefone</label><input id="telefone" name="telefone" type="tel" inputmode="tel" placeholder="(37) 99999-0000"></div>
+        <div class="f"><label for="endereco">Endereço completo</label><textarea id="endereco" name="endereco" rows="2"></textarea></div>
+        <div class="f s2"><label for="distribuidora">Distribuidora</label><input id="distribuidora" name="distribuidora"></div>
+        <div class="f s2"><label for="grupo">Tipo de ligação</label>
+          <select id="grupo" name="grupo"><option value="A">Média tensão (Grupo A)</option><option value="B">Baixa tensão (Grupo B)</option></select></div>
+        <div class="f s2"><label for="uc">Nº da UC / instalação</label><input id="uc" name="uc"></div>
+      </div>
+    </section>
+
+    <section class="fs full" data-so="watcher">
+      <h2>Identidade do cliente na capa</h2>
+      <p class="hint">Logo, frase de abertura e o ramo de atividade usado nos textos da proposta.</p>
+      <div class="fields">
+        <div class="f s3"><label>Logo do cliente</label>
+          <div class="logo-box">
+            <div class="logo-prev" id="logoPrev"><span>Sem logo</span></div>
+            <div>
+              <input type="file" id="logoFile" accept="image/*" hidden>
+              <button class="btn sec" type="button" id="btnLogo">Enviar logo</button>
+              <button class="btn del" type="button" id="btnLogoDel">Remover</button>
+            </div>
+          </div></div>
+        <div class="f s3"><label for="cor">Cor da frase (marca do cliente)</label><input id="cor" name="cor" type="color" style="height:40px;padding:3px"></div>
+        <div class="f"><label for="slogan">Frase de abertura</label><textarea id="slogan" name="slogan" rows="2"></textarea></div>
+        <div class="f s3"><label for="atividade">Atividade do cliente</label><input id="atividade" name="atividade" placeholder="produção de pães de queijo e salgados congelados"></div>
+        <div class="f s3"><label for="cargas">Cargas específicas (medição opcional)</label><input id="cargas" name="cargas" placeholder="câmaras frias, compressores, fornos"></div>
+      </div>
+    </section>
+
+    <section class="fs" id="prodFields"></section>
+
+    <section class="fs" data-so="watcher">
+      <h2>Valores</h2>
+      <p class="hint">Em reais. Deixe a instalação em 0 para aparecer como "Incluso no item A".</p>
+      <div class="fields">
+        <div class="f s3"><label for="vEquip">Equipamentos (R$)</label><input id="vEquip" name="vEquip" type="number" min="0" step="0.01"></div>
+        <div class="f s3"><label for="vInst">Instalação (R$)</label><input id="vInst" name="vInst" type="number" min="0" step="0.01"></div>
+        <div class="f s3"><label for="vMensal">Assinatura mensal (R$)</label><input id="vMensal" name="vMensal" type="number" min="0" step="0.01"></div>
+        <div class="f s3"><label for="mesesGratis">Meses de assinatura grátis</label><input id="mesesGratis" name="mesesGratis" type="number" min="0"></div>
+        <div class="f"><label for="pagamento">Condições de pagamento</label><input id="pagamento" name="pagamento"></div>
+      </div>
+      <div class="total-box"><span>Total da proposta</span><span id="totalOut">R$ 0</span></div>
+    </section>
+
+    <section class="fs full" data-so="watcher">
+      <h2>Prazos e garantias</h2>
+      <div class="fields">
+        <div class="f s2"><label for="prazo">Prazo de implantação (dias corridos)</label><input id="prazo" name="prazo" type="number" min="1"></div>
+        <div class="f s2"><label for="garEquip">Garantia equipamentos (meses)</label><input id="garEquip" name="garEquip" type="number" min="0"></div>
+        <div class="f s2"><label for="garServ">Garantia instalação (meses)</label><input id="garServ" name="garServ" type="number" min="0"></div>
+      </div>
+    </section>
+
+    <details class="fs full">
+      <summary>Dados da Flex Solar (rodapé e assinatura)</summary>
+      <div class="fields">
+        <div class="f s3"><label for="empNome">Razão social</label><input id="empNome" name="empNome"></div>
+        <div class="f s3"><label for="empTel">Telefone comercial</label><input id="empTel" name="empTel"></div>
+        <div class="f s4"><label for="empEnd">Endereço</label><input id="empEnd" name="empEnd"></div>
+        <div class="f s2"><label for="empSup">Telefone do suporte</label><input id="empSup" name="empSup"></div>
+      </div>
+    </details>
+
+  </div>
+  </form>
+
+  <div class="sticky-actions">
+    <span class="status-msg" id="saveMsg" style="margin-right:auto;align-self:center"></span>
+    <button class="btn sec" id="btnSalvar" type="button">Salvar</button>
+    <button class="btn" id="btnGerar" type="button">Gerar proposta</button>
+  </div>
+</main>
+
+<!-- ================= O.S. E ESTOQUE ================= -->
+<main class="wrap" id="view-os" hidden><div id="osBox"></div></main>
+<main class="wrap" id="view-estoque" hidden><div id="estBox"></div></main>
+<div id="etqBox" aria-hidden="true"></div>
+<div id="solBox" aria-hidden="true"></div>
+
+<!-- ================= RELATÓRIOS ================= -->
+<main class="wrap" id="view-rel" hidden>
+  <div class="bar"><h1>Relatórios</h1><button class="btn" id="relPdf" type="button">Baixar PDF</button></div>
+  <div class="card card-pad rel-filtros">
+    <div class="chips" id="relTipos"></div>
+    <div class="toolbar" style="margin:14px 0 0">
+      <div class="chips" id="relPresets">
+        <button class="chip" data-p="mes">Este mês</button><button class="chip" data-p="mesant">Mês passado</button><button class="chip" data-p="d30">Últimos 30 dias</button>
+        <button class="chip" data-p="tri">Este trimestre</button><button class="chip" data-p="ano">Este ano</button><button class="chip" data-p="tudo">Tudo</button>
+      </div>
+      <span class="grow"></span>
+      <label class="status-msg" for="relDe">De</label><input type="date" id="relDe" class="adm-search" style="min-width:0">
+      <label class="status-msg" for="relAte">até</label><input type="date" id="relAte" class="adm-search" style="min-width:0">
+      <select id="relProduto" class="adm-search" style="min-width:0" aria-label="Produto"><option value="">Todos os produtos</option><option value="watcher">Flex Watcher</option><option value="solar">Usina solar</option></select>
+    </div>
+  </div>
+  <div id="relBox" style="margin-top:16px"></div>
+</main>
+
+<!-- ================= AUDITORIA ================= -->
+<main class="wrap" id="view-audit" hidden>
+  <div class="bar">
+    <h1>Auditoria</h1>
+    <select class="adm-search" id="auditTipo" hidden aria-label="Tipo de registro" style="min-width:0">
+      <option value="">Tudo</option><option value="proposta">Propostas</option><option value="preco">Tabela de preços</option>
+      <option value="kit">Kits</option><option value="estrutura">Estruturas</option><option value="estoque">Estoque</option><option value="parametros">Parâmetros</option><option value="usuario">Usuários</option>
+    </select>
+    <input class="audit-search" id="auditBusca" type="search" placeholder="Filtrar por proposta, cliente, usuário ou campo">
+    <button class="btn sec" id="auditAtualizar" type="button">Atualizar</button>
+  </div>
+  <div class="filtro-ativo" id="auditFiltro" hidden></div>
+  <div class="card list-wrap" id="auditBox"></div>
+</main>
+
+<!-- ================= ADMINISTRAÇÃO ================= -->
+<main class="wrap" id="view-admin" hidden>
+  <div class="bar"><h1>Administração</h1><span class="status-msg">Visível só para administradores</span></div>
+  <div class="subtabs" role="tablist" id="admTabs">
+    <button class="subtab" role="tab" data-sec="precos" aria-selected="true">Tabela de preços</button>
+    <button class="subtab" role="tab" data-sec="kits" aria-selected="false">Kits por inversor</button>
+    <button class="subtab" role="tab" data-sec="estruturas" aria-selected="false">Estruturas por telhado</button>
+    <button class="subtab" role="tab" data-sec="solar" aria-selected="false">Dimensionamento solar</button>
+    <button class="subtab" role="tab" data-sec="parametros" aria-selected="false">Parâmetros de preço</button>
+    <button class="subtab" role="tab" data-sec="prazos" aria-selected="false">Prazos das O.S.</button>
+    <button class="subtab" role="tab" data-sec="usuarios" aria-selected="false">Usuários</button>
+  </div>
+  <div id="admBox"></div>
+</main>
+
+<!-- ================= PRÉ-VISUALIZAÇÃO ================= -->
+<main class="wrap" id="view-preview" hidden>
+  <div class="bar">
+    <h1>Proposta</h1>
+    <button class="btn sec" id="btnVoltar" type="button">Editar dados</button>
+    <button class="btn" id="btnPdf" type="button">Baixar PDF</button>
+  </div>
+  <p class="edit-note">Ao clicar em <strong>Baixar PDF</strong>, escolha <strong>Destino: Salvar como PDF</strong> na janela que abrir (o Chrome lembra da escolha nas próximas vezes). Para um ajuste pontual, clique em qualquer texto da proposta e edite antes de baixar; essas edições valem só para este PDF.</p>
+  <div class="preview-scroll"><div class="sheet"><div class="proposta" id="proposta"></div></div></div>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="offline" id="offline" hidden>Sem internet. As informações não podem ser salvas até a conexão voltar.</div>
+<div class="ios-dica" id="iosDica" hidden><span>Para instalar o app: toque em <strong>Compartilhar</strong> <span aria-hidden="true">⬆︎</span> e depois em <strong>Adicionar à Tela de Início</strong>.</span><button type="button" class="x" id="iosDicaX" aria-label="Fechar">×</button></div>
+
+<script>
+(function(){
+"use strict";
+const FLEX_LOGO="flex-solar.jpg";
+const EXEMPLO_LOGO="exemplo-divinissimo.jpg";
+
+/* ================= utilidades ================= */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const n=v=>{const x=parseFloat(String(v??"").replace(",","."));return isFinite(x)?x:0};
+const money=v=>{const cents=Math.round(v*100)%100!==0;return v.toLocaleString("pt-BR",{minimumFractionDigits:cents?2:0,maximumFractionDigits:2})};
+const brl=v=>"R$ "+money(v);
+const MESES=["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+const hojeISO=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+const parseISO=s=>{const [y,m,d]=(s||hojeISO()).split("-").map(Number);return {y,m,d}};
+const dataCapa=s=>{const {y,m,d}=parseISO(s);return String(d).padStart(2,"0")+" / "+String(m).padStart(2,"0")+" / "+y};
+const dataExtenso=s=>{const {y,m,d}=parseISO(s);return d+" de "+MESES[m-1]+" de "+y};
+const dataCurta=s=>{const {y,m,d}=parseISO(s);return String(d).padStart(2,"0")+"/"+String(m).padStart(2,"0")+"/"+y};
+function toast(msg){const t=$("#toast");t.textContent=msg;t.classList.add("on");clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove("on"),2600)}
+
+/* ================= listas com pesquisa =================
+   Toda <select> com 10 opções ou mais ganha um campo de busca.
+   O <select> original continua no formulário (escondido), então o resto
+   do código lê e grava valores normalmente. */
+(function(){
+  const MIN=10;
+  const norm=s=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  const proto=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,"value");
+  let aberto=null;
+  function aprimorar(sel){
+    if(!sel||sel._busca||sel.multiple||sel.dataset.busca==="0"||sel.classList.contains("st")) return;
+    if(sel.options.length<MIN) return;
+    sel._busca=true;
+    const wrap=document.createElement("span"); wrap.className="ss-wrap";
+    sel.parentNode.insertBefore(wrap,sel); wrap.appendChild(sel);
+    const btn=document.createElement("button"); btn.type="button"; btn.className="ss-btn";
+    btn.setAttribute("aria-haspopup","listbox");
+    const rot=sel.getAttribute("aria-label")||(sel.id&&document.querySelector(`label[for="${sel.id}"]`)?.textContent)||"";
+    if(rot) btn.setAttribute("aria-label",rot.trim()+": pesquisar e escolher");
+    wrap.appendChild(btn); sel.classList.add("ss-oculto"); sel.tabIndex=-1;
+    const sync=()=>{ const o=sel.options[sel.selectedIndex]; btn.textContent=o?o.textContent.trim():"—"; btn.title=btn.textContent; btn.disabled=sel.disabled; };
+    sel._sync=sync; sync();
+    sel.addEventListener("change",sync);
+    Object.defineProperty(sel,"value",{configurable:true,get(){return proto.get.call(this)},set(v){proto.set.call(this,v);sync();}});
+    btn.addEventListener("click",()=>abrir(sel,btn));
+    btn.addEventListener("keydown",e=>{ if(e.key==="ArrowDown"||(e.key.length===1&&!e.ctrlKey&&!e.metaKey)){ e.preventDefault(); abrir(sel,btn,e.key.length===1?e.key:""); } });
+    if(sel.id) document.querySelectorAll(`label[for="${sel.id}"]`).forEach(l=>l.addEventListener("click",e=>{e.preventDefault();btn.focus();}));
+  }
+  function fechar(){ if(!aberto) return; const a=aberto; aberto=null; a.pop.remove(); document.removeEventListener("mousedown",a.fora,true);
+    window.removeEventListener("resize",a.posicionar); if(window.visualViewport) window.visualViewport.removeEventListener("resize",a.posicionar);
+    if(!a.celular) a.btn.focus(); }
+  // Celular: o teclado virtual muda o tamanho da tela. A lista se reposiciona (não fecha).
+  const ehCelular=()=>window.matchMedia("(max-width: 640px), (pointer: coarse)").matches;
+  function posicionar(pop,btn){
+    const vv=window.visualViewport, altTela=vv?vv.height:window.innerHeight, topoTela=vv?vv.offsetTop:0, largTela=window.innerWidth;
+    pop.style.top=pop.style.bottom=""; 
+    if(ehCelular()){
+      // no celular: faixa no alto da área visível, largura toda, acima do teclado
+      pop.style.left="8px"; pop.style.width=(largTela-16)+"px";
+      pop.style.top=(topoTela+8)+"px"; pop.style.maxHeight=Math.max(200,altTela-16)+"px";
+      return;
+    }
+    const r=btn.getBoundingClientRect(), larg=Math.min(Math.max(r.width,340),largTela-16), alto=Math.min(380,altTela-24);
+    const abaixo=altTela-r.bottom, acima=r.top;
+    pop.style.width=larg+"px";
+    pop.style.left=Math.max(8,Math.min(r.left,largTela-larg-8))+"px";
+    if(abaixo<260&&acima>abaixo){ pop.style.bottom=(window.innerHeight-r.top+4)+"px"; pop.style.maxHeight=Math.min(alto,acima-12)+"px"; }
+    else { pop.style.top=(r.bottom+4)+"px"; pop.style.maxHeight=Math.min(alto,abaixo-12)+"px"; }
+  }
+  function abrir(sel,btn,inicial=""){
+    if(aberto){ const mesmo=aberto.sel===sel; fechar(); if(mesmo) return; }
+    const cont=sel.closest("dialog")||document.body;
+    const pop=document.createElement("div"); pop.className="ss-pop"; pop.setAttribute("role","dialog");
+    pop.innerHTML=`<div class="ss-topo"><input type="search" class="ss-q" placeholder="Digite para pesquisar…" autocomplete="off" aria-label="Pesquisar"><button type="button" class="ss-fechar" aria-label="Fechar">×</button></div><ul class="ss-lista" role="listbox"></ul><div class="ss-info"></div>`;
+    cont.appendChild(pop);
+    const celular=ehCelular(); if(celular) pop.classList.add("ss-cel");
+    posicionar(pop,btn);
+    const q=pop.querySelector(".ss-q"), ul=pop.querySelector(".ss-lista"), info=pop.querySelector(".ss-info");
+    pop.querySelector(".ss-fechar").addEventListener("click",()=>fechar());
+    const ops=[...sel.options].map((o,i)=>({i,v:o.value,t:o.textContent.trim(),n:norm(o.textContent),dis:o.disabled}));
+    let vis=[], ativo=0;
+    const desenhar=()=>{
+      const termos=norm(q.value).split(/\s+/).filter(Boolean);
+      const todos=ops.filter(o=>termos.every(t=>o.n.includes(t)));
+      vis=todos.slice(0,300);
+      ul.innerHTML=vis.length?vis.map((o,k)=>`<li role="option" data-k="${k}" class="${o.i===sel.selectedIndex?"sel":""}${k===ativo?" at":""}${o.dis?" dis":""}" aria-selected="${o.i===sel.selectedIndex}">${destacar(o.t,termos)}</li>`).join(""):`<li class="vazio">Nada encontrado</li>`;
+      info.textContent=todos.length>vis.length?`Mostrando ${vis.length} de ${todos.length}. Continue digitando para refinar.`:`${todos.length} de ${ops.length}`;
+    };
+    const escolher=k=>{ const o=vis[k]; if(!o||o.dis) return; if(sel.selectedIndex!==o.i){ sel.selectedIndex=o.i; sel._sync(); sel.dispatchEvent(new Event("input",{bubbles:true})); sel.dispatchEvent(new Event("change",{bubbles:true})); } fechar(); };
+    const mover=d=>{ if(!vis.length) return; ativo=(ativo+d+vis.length)%vis.length; desenhar(); ul.querySelector(".at")?.scrollIntoView({block:"nearest"}); };
+    q.addEventListener("input",()=>{ativo=0;desenhar();});
+    q.addEventListener("keydown",e=>{
+      if(e.key==="ArrowDown"){e.preventDefault();mover(1);} else if(e.key==="ArrowUp"){e.preventDefault();mover(-1);}
+      else if(e.key==="Enter"){e.preventDefault();escolher(ativo);} else if(e.key==="Escape"){e.preventDefault();e.stopPropagation();fechar();}
+      else if(e.key==="Tab"){fechar();}
+    });
+    ul.addEventListener("mousedown",e=>e.preventDefault());
+    ul.addEventListener("click",e=>{ const li=e.target.closest("li[data-k]"); if(li) escolher(+li.dataset.k); });
+    const fora=e=>{ if(!pop.contains(e.target)&&e.target!==btn) fechar(); };
+    aberto={sel,btn,pop,fora};
+    const repos=()=>{ if(aberto&&aberto.pop===pop) posicionar(pop,btn); };
+    document.addEventListener("mousedown",fora,true); window.addEventListener("resize",repos); if(window.visualViewport) window.visualViewport.addEventListener("resize",repos);
+    aberto.posicionar=repos; aberto.celular=celular;
+    const atualIdx=ops.findIndex(o=>o.i===sel.selectedIndex); ativo=Math.max(0,atualIdx);
+    q.value=inicial; if(inicial) ativo=0; desenhar(); q.focus();
+    ul.querySelector(".at")?.scrollIntoView({block:"nearest"});
+  }
+  function destacar(t,termos){
+    let h=esc(t); if(!termos.length) return h;
+    const nt=norm(t), marcas=new Array(t.length).fill(false);
+    for(const termo of termos){ let i=nt.indexOf(termo); while(i>=0){ for(let k=i;k<i+termo.length;k++) marcas[k]=true; i=nt.indexOf(termo,i+termo.length);} }
+    let out="",dentro=false;
+    for(let k=0;k<t.length;k++){ if(marcas[k]&&!dentro){out+="<mark>";dentro=true;} if(!marcas[k]&&dentro){out+="</mark>";dentro=false;} out+=esc(t[k]); }
+    return out+(dentro?"</mark>":"");
+  }
+  const varrer=raiz=>{ if(raiz.tagName==="SELECT") aprimorar(raiz); else if(raiz.querySelectorAll) raiz.querySelectorAll("select").forEach(aprimorar); };
+  new MutationObserver(ms=>{ for(const m of ms){
+    const s=m.target.closest?m.target.closest("select"):null;
+    if(s){ if(s._busca) s._sync(); else aprimorar(s); continue; }
+    m.addedNodes.forEach(n=>n.nodeType===1&&varrer(n));
+  }}).observe(document.body,{childList:true,subtree:true});
+  varrer(document.body);
+})();
+
+/* ================= mostrar / esconder senha ================= */
+(function(){
+  const olho=inp=>{
+    if(inp._olho) return; inp._olho=true;
+    const w=document.createElement("span"); w.className="senha-wrap"; inp.parentNode.insertBefore(w,inp); w.appendChild(inp);
+    const b=document.createElement("button"); b.type="button"; b.className="olho"; b.setAttribute("aria-label","Mostrar senha"); b.title="Mostrar senha";
+    const ic=ver=>ver?'<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M3 3l18 18M10.6 10.6a2 2 0 002.8 2.8M9.9 5.1A9.8 9.8 0 0112 5c6 0 9.5 7 9.5 7a17 17 0 01-3.1 3.9M6.1 6.1C3.8 7.8 2.5 12 2.5 12S6 19 12 19a9.6 9.6 0 004.1-.9"/></svg>'
+                         :'<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="2" d="M2.5 12S6 5 12 5s9.5 7 9.5 7-3.5 7-9.5 7S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
+    b.innerHTML=ic(false);
+    b.addEventListener("click",()=>{ const ver=inp.type==="password"; inp.type=ver?"text":"password"; b.innerHTML=ic(ver); b.setAttribute("aria-label",ver?"Esconder senha":"Mostrar senha"); b.title=ver?"Esconder senha":"Mostrar senha"; inp.focus(); });
+    w.appendChild(b);
+  };
+  const varrer=r=>{ if(r.matches&&r.matches('input[type="password"]')) olho(r); r.querySelectorAll&&r.querySelectorAll('input[type="password"]').forEach(olho); };
+  varrer(document.body);
+  new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>n.nodeType===1&&varrer(n)))).observe(document.body,{childList:true,subtree:true});
+})();
+
+/* ================= situações ================= */
+const OPCOES={
+  status:["Rascunho","Enviada","Em negociação","Fechada","Recusada","Cancelada"],
+  andamento:["Não iniciado","Aguardando pagamento","Aguardando material","Montagem","Instalação","Instalado","Em operação","Cancelado"],
+  statusPag:["Pendente","Parcial","Pago","Em atraso","Estornado"]
+};
+const ROTULO_SIT={status:"Situação da proposta",andamento:"Andamento do projeto",statusPag:"Situação do pagamento"};
+const TOM={Rascunho:"gray","Não iniciado":"gray",Pendente:"gray",
+  Enviada:"blue","Em negociação":"blue","Aguardando pagamento":"blue","Aguardando material":"blue",Parcial:"blue",
+  Montagem:"amber","Instalação":"amber",
+  Fechada:"green",Instalado:"green","Em operação":"green",Pago:"green",
+  Recusada:"red",Cancelada:"red",Cancelado:"red","Em atraso":"red",Estornado:"red"};
+function normSit(d){ if(d.status==="Aceita")d.status="Fechada"; for(const k in OPCOES){ if(!OPCOES[k].includes(d[k])) d[k]=OPCOES[k][0]; } return d; }
+function opcoesHTML(campo,valor){ return OPCOES[campo].map(o=>`<option ${o===valor?"selected":""}>${esc(o)}</option>`).join(""); }
+
+/* ================= padrões ================= */
+const EMPRESA={
+  empNome:"FLEX SOLAR LTDA.",
+  empTel:"(37) 99198-0269",
+  empEnd:"Av. João Carneiro, 200 — Santo Antônio dos Campos — Divinópolis/MG — CEP 35.505-000",
+  empSup:"(37) 9911-4607"
+};
+
+/* ================= catálogo de produtos =================
+   Para adicionar um produto novo: incluir uma entrada aqui com
+   nome, descrição, campos próprios (fields), valores padrão (defaults)
+   e a função render(d) que devolve o HTML das seções 1 em diante. */
+const PRODUTOS={
+  watcher:{
+    nome:"Flex Watcher",
+    descricao:"Gestão e monitoramento de energia",
+    ativo:true,
+    capa:{t1:"Solução de gestão e<br>monitoramento de energia",t2:"Tecnologia Flex Watcher",
+          tags:"Medição inteligente · Gestão energética · Auditoria de fatura · Relatórios e alertas"},
+    defaults:{validade:15,vEquip:3000,vInst:0,vMensal:230,mesesGratis:6,pagamento:"a vista",prazo:20,garEquip:12,garServ:12,
+              corrente:"600",qtdMed:1,ponto:"no barramento de baixa tensão da subestação (secundário do transformador)",
+              obsInst:"Desligamento curto e programado com a produção; sem intervenção na média tensão"},
+    fields:`
+      <h2>Configuração do Flex Watcher</h2>
+      <p class="hint">Medidor e ponto de instalação.</p>
+      <div class="fields">
+        <div class="f s3"><label for="corrente">Corrente dos TCs (A)</label>
+          <select id="corrente" name="corrente"><option>100</option><option>200</option><option>400</option><option>600</option><option>800</option><option>1000</option></select></div>
+        <div class="f s3"><label for="qtdMed">Quantidade de medidores</label><input id="qtdMed" name="qtdMed" type="number" min="1"></div>
+        <div class="f"><label for="ponto">Ponto de instalação</label><input id="ponto" name="ponto"></div>
+        <div class="f"><label for="obsInst">Observação da instalação (item 3)</label><input id="obsInst" name="obsInst"></div>
+      </div>`,
+    render:renderWatcher
+  },
+  solar:{nome:"Usina solar fotovoltaica",descricao:"Gerador fotovoltaico on-grid",ativo:true,
+    defaults:{validade:15,grupo:"B",consumo:"",tarifa:"",ligacaoSol:"mono220",telhado:"",km:0,moduloCod:"",inversorCod:"",qtdModulos:"",
+              pagamentoSol:"",prazoEntrega:"",garantiaModulo:"",garantiaInversor:"",garantiaInstalacao:"",calc:null,precoTotal:0,negociacao:0,visitaTecnica:false},
+    exemplo:{razao:"Omero Carlota da Silva",contato:"Fabiana",telefone:"(37) 99985-6405",endereco:"Zona Rural",consumo:750,tarifa:1.1,ligacaoSol:"mono220",km:0},
+    get fields(){ return SOLAR_FIELDS; }, documento:d=>renderSolar(d), aoMontar:()=>solarInit()},
+  mercado:{nome:"Mercado livre de energia",descricao:"Em breve",ativo:false}
+};
+
+const EXEMPLO={
+  produto:"watcher",status:"Enviada",numero:"",sigla:"",data:"2026-09-25",validade:15,cidade:"Divinópolis/MG",
+  razao:"JVM INDÚSTRIA E COMÉRCIO LTDA. — EM RECUPERAÇÃO JUDICIAL",fantasia:"Diviníssimo",cnpj:"10.288.906/0001-07",contato:"",telefone:"",
+  endereco:"R. Dorinha Gontijo, 411 — Bloco 01, Galpões 01 a 04 — Levindo Paula Pereira — Divinópolis/MG — CEP 35.502-057",
+  distribuidora:"CEMIG",grupo:"A",uc:"",cor:"#B5173B",logo:EXEMPLO_LOGO,
+  slogan:"Um coração que bate por você merece uma energia que trabalha bem por você: limpa, eficiente, econômica e controlada — do forno à mesa.",
+  atividade:"produção de pães de queijo e salgados congelados",
+  cargas:"câmaras frias, túnel de congelamento, compressores, fornos",
+  corrente:"600",qtdMed:1,ponto:"no barramento de baixa tensão da subestação (secundário do transformador)",
+  obsInst:"Desligamento curto e programado com a produção, para preservar a cadeia do frio; sem intervenção na média tensão",
+  vEquip:3000,vInst:0,vMensal:230,mesesGratis:6,pagamento:"a vista",prazo:20,garEquip:12,garServ:12,...EMPRESA
+};
+
+function novaBase(prod){
+  const p=PRODUTOS[prod]||PRODUTOS.watcher;
+  return {produto:prod,status:"Rascunho",andamento:"Não iniciado",statusPag:"Pendente",numero:"",sigla:"",data:hojeISO(),cidade:"Divinópolis/MG",razao:"",fantasia:"",cnpj:"",email:"",contato:"",telefone:"",endereco:"",
+    distribuidora:"CEMIG",grupo:"A",uc:"",cor:"#B5173B",logo:"",slogan:"",atividade:"",cargas:"",...EMPRESA,...p.defaults};
+}
+
+function total(d){return d.produto==="solar"?n(d.precoTotal):n(d.vEquip)+n(d.vInst)}
+
+/* ================= produto: usina solar ================= */
+const LIG_SOL={mono220:"Monofásico 220 V",tri220:"Trifásico 220 V",tri380:"Trifásico 380 V"};
+const n2=(v,d=2)=>Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:d,maximumFractionDigits:d});
+const CAMPOS_CALC=["consumo","tarifa","ligacaoSol","telhado","km","moduloCod","inversorCod","qtdModulos"];
+let solarOpcoes=null;
+
+const SOLAR_FIELDS=`
+  <h2>Dimensionamento da usina</h2>
+  <p class="hint">Informe o consumo e as condições do local e clique em <strong>Calcular sistema</strong>. A plataforma escolhe módulos, inversor, kit e estrutura e calcula o preço com os parâmetros do administrador.</p>
+  <div class="fields">
+    <div class="f s2"><label for="consumo">Consumo médio mensal (kWh)</label><input id="consumo" name="consumo" type="number" min="0" step="1" placeholder="750"></div>
+    <div class="f s2"><label for="tarifa">Tarifa média (R$/kWh)</label><input id="tarifa" name="tarifa" type="number" min="0" step="0.01"></div>
+    <div class="f s2"><label for="ligacaoSol">Ligação do cliente</label><select id="ligacaoSol" name="ligacaoSol">${Object.entries(LIG_SOL).map(([k,r])=>`<option value="${k}">${r}</option>`).join("")}</select></div>
+    <div class="f s2"><label for="telhado">Tipo de telhado</label><select id="telhado" name="telhado"><option value="">Carregando…</option></select></div>
+    <div class="f s2"><label for="km">Deslocamento (km ida e volta)</label><input id="km" name="km" type="number" min="0" step="1"></div>
+    <div class="f s2"><label for="qtdModulos">Nº de módulos <span class="status-msg">(vazio = calcular)</span></label><input id="qtdModulos" name="qtdModulos" type="number" min="1" step="1"></div>
+    <div class="f s3"><label for="moduloCod">Módulo</label><select id="moduloCod" name="moduloCod"><option value="">Carregando…</option></select></div>
+    <div class="f s3"><label for="inversorCod">Inversor</label><select id="inversorCod" name="inversorCod"><option value="">Automático (mais econômico)</option></select></div>
+  </div>
+  <div class="toolbar" style="margin:14px 0 0"><button class="btn" type="button" id="btnCalcSolar">Calcular sistema</button><span class="status-msg" id="solMsg"></span></div>
+  <div id="solRes" style="margin-top:14px"></div>
+  <label class="check-linha"><input type="checkbox" id="visitaTecnica" name="visitaTecnica"> <span><strong>Solicitar visita técnica</strong> para conhecer o local <small class="status-msg">(opcional: a logística recebe a etapa na O.S. quando a venda fechar)</small></span></label>
+  <h2 style="margin-top:22px">Condições comerciais</h2>
+  <div class="fields">
+    <div class="f"><label for="pagamentoSol">Condições de pagamento</label><input id="pagamentoSol" name="pagamentoSol" placeholder="Ex.: 30% na assinatura e 70% na entrega dos equipamentos"></div>
+    <div class="f s2"><label for="prazoEntrega">Prazo de entrega (dias)</label><input id="prazoEntrega" name="prazoEntrega" type="number" min="1"></div>
+    <div class="f s2"><label for="garantiaModulo">Garantia dos módulos (anos)</label><input id="garantiaModulo" name="garantiaModulo" type="number" min="0"></div>
+    <div class="f s2"><label for="garantiaInversor">Garantia do inversor (meses)</label><input id="garantiaInversor" name="garantiaInversor" type="number" min="0"></div>
+    <div class="f s2"><label for="garantiaInstalacao">Garantia da instalação (meses)</label><input id="garantiaInstalacao" name="garantiaInstalacao" type="number" min="0"></div>
+  </div>`;
+
+async function solarInit(){
+  const msg=$("#solMsg");
+  const quero=atual?{telhado:atual.telhado,moduloCod:atual.moduloCod,inversorCod:atual.inversorCod}:{};
+  try{
+    solarOpcoes=await api("/api/solar/opcoes");   // sempre atualizado: telhados, módulos e padrões podem ter mudado
+  }catch(e){ msg.textContent=e.message; return; }
+  const o=solarOpcoes;
+  $("#telhado").innerHTML=o.telhados.length?`<option value="">Escolha…</option>`+o.telhados.map(t=>`<option>${esc(t.nome)}</option>`).join(""):`<option value="">Nenhuma estrutura cadastrada</option>`;
+  $("#moduloCod").innerHTML=(o.modulos.length?o.modulos.map(m=>`<option value="${esc(m.codigo)}">${esc(m.descricao)} — ${esc(m.marca||"")} ${esc(m.modelo||"")}</option>`).join(""):`<option value="">Nenhum módulo ativo</option>`)+`<option value="__NENHUM__">Não incluir módulos (só inversor)</option>`;
+  if(!atual) return;
+  for(const k in quero) if(quero[k]) atual[k]=quero[k];
+  // valores padrão do administrador para propostas novas
+  if(atual.tarifa===""||atual.tarifa==null) atual.tarifa=o.padroes.tarifa;
+  for(const k of ["prazoEntrega","garantiaModulo","garantiaInversor","garantiaInstalacao"]) if(atual[k]===""||atual[k]==null) atual[k]=o.padroes[k];
+  if(!atual.moduloCod&&o.modulos.length){ const maior=[...o.modulos].sort((a,b)=>b.potencia_w-a.potencia_w)[0]; atual.moduloCod=(o.modulos.find(m=>m.potencia_w===620)||maior).codigo; }
+  for(const k of ["telhado","moduloCod","tarifa","prazoEntrega","garantiaModulo","garantiaInversor","garantiaInstalacao"]) { const el=$("#"+k); if(el) el.value=atual[k]??""; }
+  preencherInversores(); mostrarCalculo();
+  $("#btnCalcSolar").onclick=calcularSolar;
+  if(usuario&&usuario.perfil==="admin"&&atual.id&&atual.calc&&!atual.calc.custos){
+    try{ const r=await api(`/api/admin/propostas/${atual.id}/composicao`); if(r.composicao&&atual.calc&&!atual._calcVelho){ atual.calc.custos=r.composicao; mostrarCalculo(); } }catch(e){}
+  }
+}
+function preencherInversores(){
+  const s=$("#inversorCod"); if(!s||!atual) return;
+  const lista=(atual.calc&&atual.calc.inversores)||[];
+  s.innerHTML=`<option value="">Automático (mais econômico)</option><option value="__NENHUM__">Não incluir inversor (só módulos)</option>`+lista.map(i=>`<option value="${esc(i.codigo)}">${i.qtd>1?i.qtd+"× ":""}${esc(i.descricao)}</option>`).join("");
+  if(atual.inversorCod&&atual.inversorCod!=="__NENHUM__"&&!lista.some(i=>i.codigo===atual.inversorCod)) s.insertAdjacentHTML("beforeend",`<option value="${esc(atual.inversorCod)}">${esc(atual.inversorCod)}</option>`);
+  s.value=atual.inversorCod||"";
+}
+async function calcularSolar(){
+  coletar(); const msg=$("#solMsg"), b=$("#btnCalcSolar"); msg.textContent="Calculando…"; b.disabled=true;
+  try{
+    const r=await api("/api/solar/calcular",{method:"POST",body:JSON.stringify({consumo:atual.consumo,tarifa:atual.tarifa,ligacao:atual.ligacaoSol,telhado:atual.telhado,km:atual.km,modulo:atual.moduloCod,inversor:atual.inversorCod,qtdModulos:atual.qtdModulos,negociacao:atual.negociacao||0})});
+    atual.calc=r; atual.precoTotal=r.preco; atual._calcVelho=false; msg.textContent="";
+    preencherInversores(); mostrarCalculo();
+  }catch(e){ msg.textContent=e.message||"Não foi possível calcular."; }
+  finally{ b.disabled=false; }
+}
+let negTimer=null;
+function negociar(frac){
+  if(!atual||!atual.calc) return;
+  atual.negociacao=Math.min(1,Math.max(0,frac));
+  clearTimeout(negTimer); const m=$("#negMsg"); if(m) m.textContent="Recalculando…";
+  negTimer=setTimeout(calcularSolar,250);
+}
+function ligarNegociacao(c){
+  const r=$("#negRange"), p=$("#negPreco"), t=$("#negTabela"); if(!r) return;
+  const span=c.precoTabela-c.precoMinimo;
+  r.addEventListener("input",()=>{ const est=c.precoMinimo+span*(r.value/100); p.value=Math.round(est); });
+  r.addEventListener("change",()=>negociar(1-r.value/100));
+  p.addEventListener("change",()=>{ const v=Math.min(c.precoTabela,Math.max(c.precoMinimo,n(p.value))); if(n(p.value)<c.precoMinimo) toast("Abaixo do mínimo autorizado: ajustado para "+brl(c.precoMinimo)); negociar(span>0?(c.precoTabela-v)/span:0); });
+  t.addEventListener("click",()=>negociar(0));
+}
+function mostrarCalculo(){
+  const box=$("#solRes"); if(!box||!atual) return;
+  const c=atual.calc;
+  if(!c){ box.innerHTML=""; return; }
+  const custos=c.custos;
+  box.innerHTML=`${atual._calcVelho?'<div class="aviso">Os dados mudaram depois do último cálculo. Clique em <strong>Calcular sistema</strong> de novo antes de gerar a proposta.</div>':""}
+    <div class="sol-res">
+      <div><span>Módulos</span>${c.modulo?`<strong>${c.nModulos} × ${n2(c.modulo.potencia_w,0)} Wp</strong><small>${esc(c.modulo.descricao)}</small>`:`<strong>Não incluídos</strong><small>proposta só com inversor</small>`}</div>
+      <div><span>Potência</span>${c.modulo?`<strong>${n2(c.kwp,2)} kWp</strong>`:`<strong>—</strong>`}<small>necessário: ${n2(c.kwpNecessario,2)} kWp</small></div>
+      <div><span>Inversor</span>${c.inversor?`<strong>${c.inversor.qtd>1?c.inversor.qtd+" × ":""}${n2(c.inversor.kw,c.inversor.kw%1?1:0)} kW</strong><small>${esc(c.inversor.descricao)}${c.inversor.automatico?" · automático":""}</small>`:`<strong>Não incluído</strong><small>proposta só com módulos</small>`}</div>
+      <div><span>Geração estimada</span>${c.geracaoMensal>0?`<strong>${n2(c.geracaoMensal,0)} kWh/mês</strong><small>${n2(c.cobertura*100,0)}% do consumo</small>`:`<strong>—</strong><small>sem módulos</small>`}</div>
+      <div><span>Payback</span>${c.payback!=null?`<strong>${n2(c.payback,1)} meses</strong><small>tarifa R$ ${n2(c.tarifa)}/kWh</small>`:`<strong>—</strong><small>sem geração</small>`}</div>
+      <div class="preco"><span>Preço da proposta</span><strong>${brl(c.preco)}</strong><small>${c.desconto>0.005?`desconto de ${brl(c.desconto)} (${n2(c.descontoPct*100,1)}%) sobre ${brl(c.precoTabela)}`:[c.telhado,LIG_SOL[c.ligacao]].filter(Boolean).map(esc).join(" · ")}</small></div>
+    </div>
+    ${c.temNegociacao?`<div class="negocia">
+      <div class="neg-cab"><strong>Negociação de preço</strong><span class="status-msg">Arraste ou digite o preço. O limite é definido pelo administrador.</span></div>
+      <div class="neg-linha">
+        <span class="neg-lim"><small>Mínimo autorizado</small>${brl(c.precoMinimo)}</span>
+        <input type="range" id="negRange" min="0" max="100" step="1" value="${Math.round((1-(c.negociacao||0))*100)}" aria-label="Preço entre o mínimo autorizado e o preço de tabela">
+        <span class="neg-lim dir"><small>Preço de tabela</small>${brl(c.precoTabela)}</span>
+      </div>
+      <div class="neg-linha2">
+        <label for="negPreco">Preço negociado (R$)</label><input id="negPreco" type="number" step="10" min="${c.precoMinimo}" max="${c.precoTabela}" value="${c.preco}">
+        <button class="btn sec" type="button" id="negTabela" ${c.negociacao>0?"":"disabled"}>Voltar ao preço de tabela</button>
+        <span class="status-msg" id="negMsg"></span>
+      </div>
+    </div>`:""}
+    ${custos&&window.FlexAdmin?`<details class="custos" open><summary>Composição do custo (visível só para administradores)</summary><div style="margin-top:8px">${window.FlexAdmin.htmlComposicao(custos)}</div></details>`:""}`;
+  if(c.temNegociacao) ligarNegociacao(c);
+}
+const brl2=v=>"R$ "+n2(v,2);
+
+function renderSolar(d){
+  const c=d.calc||{}; const m=c.modulo||{}; const inv=c.inversor||{};
+  const topo=`<div class="topo"><img src="solar-topo.jpg" alt="Flex Solar"></div>`;
+  const und=u=>({m:"mt",un:"Und",par:"Par",kit:"Kit"})[String(u||"").toLowerCase()]||u||"Und";
+  const temMod=!!c.modulo&&c.nModulos>0, temInv=!!c.inversor;
+  const itens=[
+    temMod&&[c.nModulos,"Und",`Módulo Fotovoltaico ${m.tecnologia||""} Marca ${m.marca||""} ${m.modelo||""}`.replace(/\s+/g," "),`${n2(m.potencia_w)} Wp`],
+    temInv&&[inv.qtd,"Und",`Inversor ${inv.marca||""} ${inv.modelo||""}`.replace(/\s+/g," "),`${n2(inv.kw)} kW`],
+    ...(c.itens||[]).map(i=>[n2(i.qtd,i.qtd%1?2:0),und(i.unidade),i.descricao,""]),
+    temMod&&[1,"Cj",`Estrutura de fixação (telhado ${String(c.telhado||"").toLowerCase()}), aterramentos e acessórios`,""],
+  ].filter(Boolean);
+  const descPreco=temMod?`Unidade Geradora ${n2(c.kwp,3)} kWp${temInv?"":" (sem inversor)"}`:`Inversor ${inv.qtd>1?inv.qtd+" × ":""}${n2(inv.kw)} kW`;
+  return `<div class="sol">
+  <section class="pg">
+    ${topo}
+    <h1 class="tit">PROPOSTA TÉCNICA COMERCIAL DE FORNECIMENTO DE GERADOR FOTOVOLTAICO</h1>
+    <table class="cli"><tbody>
+      <tr><th>Cliente:</th><td><b>${esc(d.razao)}</b></td><th>EMAIL:</th><td>${esc(d.email||"")}</td></tr>
+      <tr><th>TEL:</th><td>${esc([d.contato,d.telefone].filter(Boolean).join(" "))}</td><th>CPF / CNPJ:</th><td>${esc(d.cnpj||"")}</td></tr>
+      <tr><th>Local:</th><td>${esc(d.endereco||"")}</td><th>Nº da Proposta:</th><td>${esc(d.numero)}</td></tr>
+      <tr><th>Data:</th><td>${dataCurta(d.data)}</td><th>Nº da Instalação:</th><td>${esc(d.uc||"")}</td></tr>
+    </tbody></table>
+    <img class="intro" src="solar-intro.jpg" alt="Introdução Flex Solar">
+    <p>Prezados Senhores,</p>
+    <p>Atendendo à consulta, temos a satisfação de apresentar a nossa proposta para o fornecimento da instalação de um sistema gerador fotovoltaico, os quais serão construídos de acordo com a descrição dos serviços e características técnicas dos equipamentos mencionadas a seguir.</p>
+  </section>
+  <section class="pg">
+    ${topo}
+    <img class="ciclo" src="solar-ciclo.jpg" alt="Ciclo Flex Solar da energia positiva">
+    <h2 class="cen">ESCOPO DE FORNECIMENTO</h2>
+    <ul class="bol">
+      <li>Promover o acesso na unidade geradora do consumidor na distribuidora de energia: solicitação de acesso, apresentação do projeto de acesso, memorial descritivo com a devida Anotação de Responsabilidade Técnica. Regularização e aprovação do ponto de conexão na rede distribuidora.</li>
+      <li>Avaliação das características físicas do local para instalação da unidade de geração de energia.</li>
+      <li>Dimensionamento customizado do sistema conforme consumo de energia do consumidor.</li>
+      <li>Transporte, hospedagem e alimentação da equipe de instalação.</li>
+    </ul>
+    <p>Esta proposta prevê o fornecimento de equipamentos fotovoltaicos para geração de energia elétrica conforme descrito a seguir e sua devida instalação. O valor médio de irradiação considerado foi de ${n2(c.hsp)} kWh/m².dia (fonte: ${esc(c.fonteIrradiacao||"SWERA")}) para a cidade de ${esc(c.cidadeIrradiacao||"Divinópolis")}.</p>
+  </section>
+  <section class="pg">
+    ${topo}
+    ${temMod?`<p class="ug"><b>Unidade Geradora Fotovoltaica FLEX-UGFV:</b> <b>${n2(c.kwp,3)} kWp</b><br><b>Geração estimada:</b> <b>${n2(c.geracaoMensal,1)} kWh/mês</b></p>
+    <p>Segue um resumo das informações referentes ao funcionamento do sistema.</p>
+    <table class="res"><tbody>
+      <tr><td>Energia gerada</td><td class="v">${n2(c.geracaoAnual)}</td><td>kWh/ano*</td></tr>
+      <tr><td>Performance ratio</td><td class="v">${n2(c.pr)}%</td><td>Estimado*</td></tr>
+      <tr><td>Tecnologia do módulo</td><td class="v">${esc(m.tecnologia||"")}</td><td></td></tr>
+      <tr><td>Potência dos módulos</td><td class="v">${n2(m.potencia_w)}</td><td>Wp</td></tr>
+      <tr><td>Consumo médio mensal do cliente</td><td class="v">${n2(c.consumo,0)}</td><td>kWh/mês</td></tr>
+      <tr><td>Tarifa média</td><td class="v">${n2(c.tarifa)}</td><td>R$/kWh</td></tr>
+      <tr><td>Payback</td><td class="v">${n2(c.payback)}</td><td>meses</td></tr>
+      <tr><td>Área estimada do sistema</td><td class="v">${n2(c.area,1)}</td><td>m²</td></tr>
+      <tr><td>Peso estimado do sistema</td><td class="v">${n2(c.peso,0)}</td><td>kg</td></tr>
+    </tbody></table>
+    <p class="nota">* Estimativas com base na irradiação média da região. A geração real varia com o clima, sombreamento e orientação dos módulos.</p>`
+    :`<p class="ug"><b>Fornecimento e instalação de inversor:</b> <b>${inv.qtd>1?inv.qtd+" × ":""}${n2(inv.kw)} kW</b></p>`}
+    <h3>ITENS FORNECIDOS PARA COMPOSIÇÃO DA UNIDADE GERADORA FOTOVOLTAICA:</h3>
+    <table class="itn"><tbody>${itens.map(i=>`<tr><td class="q">${esc(i[0])}</td><td class="u">${esc(i[1])}</td><td>${esc(i[2])}</td><td class="dt">${esc(i[3])}</td></tr>`).join("")}</tbody></table>
+    <h3>CONDIÇÕES GERAIS DE VENDAS</h3>
+    <h3>PREÇOS</h3>
+    <p>Seguem abaixo as condições comerciais para o fornecimento de instalação da unidade geradora fotovoltaica descritos nesta proposta. O serviço de instalação e comissionamento estão inclusos na proposta.</p>
+    <table class="prc"><thead><tr><th>ITEM</th><th>QTD</th><th>DESCRIÇÃO</th><th>PREÇO</th></tr></thead><tbody>
+      <tr><td class="c">1</td><td class="c">1</td><td class="c">${esc(descPreco)}</td><td class="n">${n2(c.preco)}</td></tr>
+      <tr class="tot"><td></td><td></td><td class="c">TOTAL</td><td class="n">${n2(c.preco)}</td></tr>
+    </tbody></table>
+    <p>Os preços apresentados nesta proposta estão expressos em REAIS (R$) e são válidos para as quantidades e especificações indicadas, diretamente vinculados ao cumprimento dos eventos financeiros previstos nas condições de pagamento.</p>
+    <p>Os preços serão revisados nos casos de desequilíbrio econômico/financeiros das prestações de cada uma das partes na hipótese de onerosidade excessiva superveniente, especialmente em caso de alteração na legislação que crie ou modifique tributos e/ou obrigações legais, ou ainda outras medidas de ordem econômica, que desequilibrem a relação das partes.</p>
+  </section>
+  <section class="pg cnd">
+    ${topo}
+    <p class="t">• <b><u>REAJUSTE DE PREÇOS</u></b></p><p>Os preços apresentados nesta proposta são fixos durante a validade da proposta.</p>
+    <p class="t">• <b><u>FRETE</u></b></p><p>Incluso no valor total</p>
+    <p class="t">• <b><u>DATA BASE DA PROPOSTA:</u></b> <span class="v">${dataCurta(d.data)}</span></p>
+    <p class="t">• <b><u>CONDIÇÕES DE PAGAMENTO:</u></b> <span class="v">${esc(d.pagamentoSol||"")}</span></p>
+    <p class="t">• <b><u>IMPOSTOS:</u></b></p>
+    <p>• ICMS: isento para gerador fotovoltaico, conforme legislação vigente.</p>
+    <p>• PIS/COFINS: 9,25% incluso no(s) preço(s) dos produtos conforme legislação vigente.</p>
+    <p>• IPI: isento para gerador fotovoltaico, conforme legislação vigente.</p>
+    <p class="t">• <b><u>PRAZO DE ENTREGA:</u></b></p>
+    <p>Nosso prazo de entrega será de ${Math.round(n(d.prazoEntrega))} dias contados a partir da data em que foram satisfeitas as seguintes condições:</p>
+    <p>a) Recebimento do pedido ou outro documento oficial que mencione a intenção da compra em nossa fábrica;<br>b) Recebimento de todas as informações necessárias à fabricação;<br>c) Aprovação de desenhos e folhas de dados, se necessários;<br>d) Cadastro comercial atualizado para pagamentos a crédito;<br>e) Cumprimento das condições de pagamento acordadas;<br>f) O prazo acima deverá ser confirmado na colocação do pedido.<br>g) Este prazo pode variar devido ao trâmite dentro da concessionária, que não é de controle da FLEX.<br>h) Deve ser entregue pelo cliente ponto de internet no local do inversor.</p>
+    <p><b>NOTA:</b> O prazo de entrega apresentado exclui o período decorrido para a aprovação de desenhos, quando necessário.</p>
+    <p class="t">• <b>VALIDADE DESTA PROPOSTA:</b> ${Math.round(n(d.validade))} dias da data de emissão.</p>
+    <p>Caso o cliente emita o “aceite” após o prazo de validade, os preços apresentados estarão sujeitos a reajuste.</p>
+    <p class="t">• <b>CONTRATO</b> – caso o cliente emita o aceite desta proposta será celebrado um contrato entre as partes.</p>
+    <p class="t">• <b>NOTAS:</b></p>
+    <p><b>Descritivo dos Equipamentos:</b></p>
+    <p>Será enviado juntamente a esta proposta um link para download do manual técnico de todos os equipamentos.</p>
+    <p><b>GARANTIA:</b></p>
+    <p>● Módulos fotovoltaicos estarão livres de defeitos de fabricação e material, e têm garantia de ${Math.round(n(d.garantiaModulo))} anos. Os módulos terão 80% de sua eficiência no 25º ano.<br>
+    ● Inversores possuem garantia contra defeitos que ocorram em ${Math.round(n(d.garantiaInversor))} meses.<br>
+    ● Garantia de defeitos dos serviços de instalação em ${Math.round(n(d.garantiaInstalacao))} meses.</p>
+  </section>
+  <section class="pg ult">
+    ${topo}
+    <p class="cen" style="margin-top:40px">${temMod?`Fornecimento e Instalação de Kit gerador fotovoltaico capacidade ${n2(c.consumo,0)} kWh/mês`:`Fornecimento e Instalação de inversor ${n2(inv.kw)} kW`}</p>
+    <div class="contato-sol"><b>CONTATO:</b><br>${esc(d.empNome)}<br>${esc(d.empTel)}<br>${esc(d.empEnd)}</div>
+  </section>
+  </div>`;
+}
+
+/* ================= renderização da proposta ================= */
+function capa(d,p){
+  const nomeCli=d.fantasia?(esc(d.razao)+" · "+esc(d.fantasia.toUpperCase())):esc(d.razao);
+  const ucTxt=[d.uc?esc(d.uc):"",esc(d.distribuidora),d.grupo==="A"?"Média tensão (Grupo A)":"Baixa tensão (Grupo B)"].filter(Boolean).join("  ·  ");
+  return `<section class="capa pb">
+    <img class="logo-flex" src="${FLEX_LOGO}" alt="Flex Solar">
+    <div class="t1">${p.capa.t1}</div>
+    <div class="t2">${p.capa.t2}</div>
+    <div class="tags">${p.capa.tags}</div>
+    ${d.logo?`<img class="logo-cli" src="${d.logo}" alt="">`:""}
+    ${d.slogan?`<p class="slogan" style="color:${esc(d.cor||"#B5173B")};text-align:center">${esc(d.slogan)}</p>`:`<div style="height:28px"></div>`}
+    <table class="info"><tbody>
+      <tr><td class="k">Data:</td><td class="v">${dataCapa(d.data)}</td></tr>
+      <tr><td class="k">Proposta nº:</td><td class="v">${esc(d.numero)}</td></tr>
+      <tr><td class="k">Cliente:</td><td class="v">${nomeCli}</td></tr>
+      <tr><td class="k">CNPJ:</td><td class="v">${esc(d.cnpj)}</td></tr>
+      ${d.contato||d.telefone?`<tr><td class="k">Contato:</td><td class="v">${[esc(d.contato),esc(d.telefone)].filter(Boolean).join("  ·  ")}</td></tr>`:""}
+      <tr><td class="k">Endereço:</td><td class="v">${esc(d.endereco)}</td></tr>
+      <tr><td class="k">Unidade consumidora:</td><td class="v">·  ${ucTxt}</td></tr>
+    </tbody></table>
+  </section>`;
+}
+
+function rodape(d){
+  const cli=esc(d.razao.split("—")[0].trim())+(d.fantasia?"<br>("+esc(d.fantasia.toUpperCase())+")":"");
+  return `<div class="blk aceite">
+    <p>Declaro ter lido, compreendido e estar de acordo com os termos, escopo, investimentos e condições apresentados nesta proposta comercial.</p>
+    <p>${esc(d.cidade)}, ${dataExtenso(d.data)}.</p>
+    <div class="sigs"><div>${esc(d.empNome)}</div><div>${cli}</div></div>
+  </div>
+  <div class="contato blk"><strong>CONTATO</strong>
+    ${esc(d.empNome)} · ${esc(d.empTel)}<br>${esc(d.empEnd)}<br>Suporte técnico Flex Watcher: ${esc(d.empSup)}
+  </div>`;
+}
+
+function renderWatcher(d){
+  const cli=esc(d.fantasia||d.razao);
+  const A=d.grupo==="A";
+  const dist=esc(d.distribuidora||"distribuidora");
+  const amp=esc(d.corrente)+" A";
+  const qtd=Math.max(1,Math.round(n(d.qtdMed)));
+  const atividade=d.atividade?` na ${esc(d.atividade)}`:"";
+  const cargas=d.cargas?` (${esc(d.cargas)})`:"";
+  const tensao=A?"média tensão":"baixa tensão";
+  const inst=n(d.vInst);
+  const meses=Math.round(n(d.mesesGratis));
+
+  let s=`<h2 class="first">1- Escopo da solução</h2>
+  <h3>Gestão Estratégica da Energia</h3>
+  <p>Com o Flex Watcher, a ${cli} recebe muito mais do que medição: recebe medição, análise, controle e comprovação de resultados em uma única solução. Um serviço inteligente e contínuo, que combina hardware de alta precisão, plataforma digital, consultoria técnica especializada e relatórios gerenciais — transformando a energia em alavanca de competitividade e de redução de custos${atividade}.</p>
+  <h3>Medição das Grandezas Elétricas — Entrada Geral${A?" no Secundário do Transformador":""} (medidor trifásico ${amp})</h3>
+  <p>Instalação de ${qtd>1?qtd+" medidores inteligentes":"um medidor inteligente"} Flex Watcher trifásico, com três transformadores de corrente (TC) de ${amp} do tipo split-core${qtd>1?" cada":""}, ${esc(d.ponto)}, medindo o consumo global da unidade de forma contínua: tensão e corrente por fase, potência ativa, reativa e aparente, fator de potência, demanda e energia acumulada, com envio à nuvem a cada 5 minutos. O ponto exato de instalação é confirmado na visita técnica${A?`; a conciliação com a medição da ${dist} considera as perdas de transformação, quando aplicáveis`:""}. Instalação não invasiva, sem corte de condutores${A?" e sem nenhuma intervenção na média tensão":""}. A medição de circuitos específicos${cargas} pode ser acrescentada como opcional.</p>`;
+
+  if(A){
+    s+=`<h3>Gestão de Energia Reativa</h3>
+  <p>Monitoramento contínuo do fator de potência da instalação, hora a hora, identificando a energia e a demanda reativas excedentes (referência 0,92 — REN ANEEL 1.000/2021), inclusive o excedente capacitivo na janela noturna definida pela distribuidora. Em instalações com muitos motores e compressores, o reativo pode representar parcela relevante da fatura. A partir desses dados, a Flex propõe e acompanha as ações corretivas — como o dimensionamento e o ajuste de bancos de capacitores — para eliminar cobranças desnecessárias.</p>
+  <h3>Gestão de Demanda Contratada e Horário de Ponta</h3>
+  <p>Análise do perfil de carga para adequar a demanda contratada à operação real: alerta em tempo real na aproximação do limite (a ultrapassagem é cobrada quando a demanda medida passa de 5% acima da contratada), identificação dos equipamentos responsáveis pelos picos e recomendação de ajuste do contrato, evitando tanto a demanda ociosa quanto a cobrança de ultrapassagem. A curva de carga também orienta o deslocamento de cargas para fora do horário de ponta (17h às 20h, em dias úteis) e a escolha da modalidade tarifária (Verde ou Azul).</p>`;
+  }else{
+    s+=`<h3>Gestão do Consumo e Eficiência</h3>
+  <p>Acompanhamento contínuo do perfil de consumo, identificando horários de maior uso, consumo de base (noites e fins de semana) e desperdícios. Com esses dados, a Flex propõe ações práticas de eficiência e acompanha os resultados mês a mês, além de avaliar a viabilidade da tarifa branca, quando aplicável.</p>`;
+  }
+
+  s+=`<h3>Auditoria Ativa de Faturas (${dist})</h3>
+  <p>Auditoria mensal da fatura ${dist}: conferência de leituras e constantes, ${A?"demanda registrada e faturada, energia ativa e reativa por posto tarifário, tarifa vigente da modalidade":"energia faturada, tarifa vigente"}, bandeira tarifária, tributos e contribuição de iluminação pública — cruzados com a medição própria do Flex Watcher. Se a unidade participar do sistema de compensação de energia (geração solar própria ou energia compartilhada), a auditoria inclui a energia injetada e compensada e o saldo de créditos. O resultado é transparência, confiabilidade e evidência técnica para eventuais esclarecimentos junto à distribuidora.</p>
+  <h3>Alertas Proativos e Relatórios (WhatsApp / E-mail)</h3>
+  <p>A plataforma acompanha o comportamento de consumo em tempo real. Notificações diárias e semanais com resumo de consumo, demanda máxima e horário, fator de potência${A?" e consumo no horário de ponta":""}; alertas imediatos de anomalias (${A?"demanda próxima do limite contratado, fator de potência abaixo da referência, ":""}falta de fase ou tensão fora da faixa, medidor sem comunicação, consumo fora do padrão); e relatório mensal gerencial com a auditoria da fatura, os indicadores e recomendações priorizadas.</p>
+
+  <h2>2- Equipamentos e serviços fornecidos</h2>
+  <p class="lead">Fornecimento para a unidade em ${tensao} (quantidades a confirmar no levantamento técnico):</p>
+  <table class="grid"><thead><tr><th>ITEM</th><th>QTD</th><th>DESCRIÇÃO</th><th>OBSERVAÇÕES</th></tr></thead><tbody>
+    <tr class="blk"><td class="c">1</td><td class="c">${qtd}</td><td>Medidor inteligente Flex Watcher Trifásico ${amp} — entrada geral${A?", no secundário do transformador":""}: placa eletrônica de medição montada, caixa de montagem com display LCD e 3 transformadores de corrente (TC) de ${amp}, tipo split-core</td><td>Medição do consumo global da unidade</td></tr>
+    <tr class="blk"><td class="c">2</td><td class="c">1</td><td>Acesso à plataforma Flex Watcher (nuvem) — usuários da unidade</td><td>Gestão, manutenção e responsáveis indicados</td></tr>
+    <tr class="blk"><td class="c">3</td><td class="c">1</td><td>Instalação, configuração e comissionamento (equipe própria, NR-10)</td><td>${esc(d.obsInst)}</td></tr>
+    <tr class="blk"><td class="c">4</td><td class="c">1</td><td>Serviço mensal (REMOTO): gestão energética${A?", gestão de demanda e de energia reativa":""}, auditoria da fatura ${dist}, notificações diárias/semanais e relatório mensal</td><td>Assinatura mensal</td></tr>
+  </tbody></table>
+
+  <h2 class="blk">3- Monitoramento e entregas recorrentes</h2>
+  <p>A plataforma Flex Watcher funciona como um verdadeiro raio-X da instalação elétrica. Os dados coletados são tratados e transformados em gráficos, indicadores e relatórios gerenciais que permitem decisões rápidas, embasadas e mensuráveis.</p>
+  <ul>
+    <li><b>Dashboard em tempo quase real:</b> consumo, demanda, fator de potência, tensão e corrente por fase e energia da unidade, com filtros por dia, semana e mês;</li>
+    <li><b>Notificação diária (e-mail/WhatsApp):</b> consumo do dia, demanda máxima e horário, fator de potência${A?", consumo no horário de ponta":""} e alertas;</li>
+    <li><b>Resumo semanal:</b> tendência de consumo, dias de pico${A?", energia reativa":""}, consumo de base (noites e fins de semana) e comparação com a semana anterior;</li>
+    <li><b>Alertas em tempo real:</b> ${A?"demanda próxima do limite contratado, fator de potência abaixo da referência, ":""}falta de fase ou tensão fora da faixa, medidor sem comunicação (aviso em 1 h, repetição a cada 30 min), consumo fora do padrão;</li>
+    <li><b>Relatório mensal gerencial:</b> curva de carga${A?", demanda e reativo por posto":""}, auditoria completa da fatura ${dist}, economia capturada e recomendações do mês seguinte.</li>
+  </ul>
+
+  <h2 class="pb-before" style="page-break-before:always;break-before:page">4- Investimento</h2>
+  <p class="lead">Valores para a unidade em ${tensao}, conforme o fornecimento descrito no item 2:</p>
+  <table class="grid inv"><thead><tr><th>ITEM</th><th>DESCRIÇÃO</th><th>VALOR (R$)</th></tr></thead><tbody>
+    <tr><td class="l">A</td><td>Equipamentos — ${qtd>1?qtd+" medidores inteligentes":"medidor inteligente"} Flex Watcher Trifásico ${amp} (placa eletrônica, caixa com display LCD e 3 TCs split-core de ${amp}) e acessórios</td><td class="val">${money(n(d.vEquip))}</td></tr>
+    <tr><td class="l">B</td><td>Serviço de instalação, configuração e comissionamento (pagamento único)</td><td class="val">${inst>0?money(inst):"Incluso no item A"}</td></tr>
+    <tr><td class="l">C</td><td>Assinatura mensal — plataforma + gestão energética + auditoria + relatórios</td><td class="val">${money(n(d.vMensal))}</td></tr>
+    ${meses>0?`<tr class="soft"><td class="l">D</td><td class="d">Opcional: incluso ${meses} ${meses===1?"mês":"meses"} de assinatura grátis</td><td class="val"></td></tr>`:""}
+    <tr class="tot"><td></td><td>Total — equipamentos + instalação${meses>0?` + ${meses} ${meses===1?"mês":"meses"} de assinatura`:""}</td><td class="val">${money(total(d))}</td></tr>
+  </tbody></table>
+  <p class="cond">Condições de Pagamento: ${esc(d.pagamento)}</p>
+  <hr>
+  <h3>Frentes de Valor para a Unidade (referência)</h3>`;
+
+  if(A){
+    s+=`<p>A unidade é atendida em média tensão (Grupo A), com cobrança de demanda contratada, de ultrapassagem de demanda e de energia e demanda reativas excedentes — as frentes clássicas de economia da indústria se aplicam integralmente. O valor do Flex Watcher para a ${cli} está em: (i) eliminação de cobranças de reativo excedente; (ii) adequação da demanda contratada e prevenção de ultrapassagens; (iii) deslocamento de cargas do horário de ponta e escolha da modalidade tarifária; (iv) gestão ${d.cargas?"da refrigeração e ":""}do consumo de base; (v) conferência mensal da fatura ${dist} com dados próprios. A estimativa de economia depende das faturas ${dist} dos últimos 12 meses (demanda, reativo e consumo por posto) e será apresentada após a análise; os ganhos efetivos são comprovados com a medição contínua.</p>`;
+  }else{
+    s+=`<p>A unidade é atendida em baixa tensão (Grupo B), com faturamento por energia consumida. O valor do Flex Watcher para a ${cli} está em: (i) identificação de desperdícios e do consumo de base; (ii) ações de eficiência acompanhadas mês a mês; (iii) avaliação da tarifa branca, quando aplicável; (iv) conferência mensal da fatura ${dist} com dados próprios. A estimativa de economia depende das faturas ${dist} dos últimos 12 meses e será apresentada após a análise; os ganhos efetivos são comprovados com a medição contínua.</p>`;
+  }
+
+  s+=`<h2 class="blk">5- Condições gerais</h2>
+  <h3>Prazo de Implantação</h3>
+  <p>Até ${Math.round(n(d.prazo))} dias corridos a partir do aceite formal desta proposta, condicionado ao agendamento do desligamento programado e à disponibilidade de rede Wi-Fi 2,4 GHz no ponto de medição (ponto de acesso dedicado pode ser fornecido).</p>
+  <h3>Responsabilidades do Cliente</h3>
+  <ul>
+    <li>Acesso ${A?"à subestação/quadro geral de baixa tensão":"ao quadro geral de baixa tensão"}, acompanhado do responsável técnico da unidade, e janela de desligamento programado para a instalação;</li>
+    <li>Rede Wi-Fi 2,4 GHz com cobertura no ponto de medição (ou aceite do ponto de acesso ofertado);</li>
+    <li>Faturas ${dist} dos últimos 12 meses${A?" e cópia do contrato de demanda (CUSD/CCER)":""};</li>
+    ${A?"<li>Diagrama unifilar da subestação, se disponível;</li>":""}
+    <li>Indicação do responsável interno (manutenção/produção) para receber notificações e validar as ações.</li>
+  </ul>
+  <h3>Garantia</h3>
+  <p>Garantia de ${Math.round(n(d.garEquip))} meses dos equipamentos Flex Watcher contra defeitos de fabricação e de ${Math.round(n(d.garServ))} meses dos serviços de instalação. Suporte técnico incluído na assinatura durante a vigência do contrato.</p>
+  <h3>Observações</h3>
+  <ul>
+    <li>O Flex Watcher não substitui o medidor da distribuidora nem instrumentos certificados para faturamento; produz referência técnica independente para gestão, conferência e auditoria;</li>
+    <li>Em caso de visitas técnicas e/ou outros serviços deverá ser acordado previamente entre as partes de acordo com tipo de demanda de serviço;</li>
+    <li>Os equipamentos são passivos: não interferem nas proteções da instalação nem na medição da concessionária;</li>
+    <li>A instalação é feita exclusivamente na baixa tensão${A?" (secundário do transformador), sem intervenção na média tensão nem":", sem intervenção"} na medição da concessionária;</li>
+    <li>Impostos incidentes conforme legislação vigente, inclusos nos preços;</li>
+    <li><b>VALIDADE DESTA PROPOSTA: ${Math.round(n(d.validade))} dias da data de emissão.</b></li>
+  </ul>`;
+  return s;
+}
+
+function renderProposta(d){
+  const p=PRODUTOS[d.produto]||PRODUTOS.watcher;
+  if(p.documento) return p.documento(d);
+  return capa(d,p)+p.render(d)+rodape(d);
+}
+
+/* ================= API (backend no Railway) ================= */
+const API=((window.FLEX_CONFIG||{}).API_URL||"").replace(/\/$/,"");
+const TK="flexsolar-token", UK="flexsolar-usuario";
+let usuario=null; try{usuario=JSON.parse(localStorage.getItem(UK)||"null")}catch(e){}
+let token=""; try{token=localStorage.getItem(TK)||""}catch(e){}
+async function api(path,opts={}){
+  let r;
+  try{ r=await fetch(API+path,{...opts,headers:{"Content-Type":"application/json",...(token?{Authorization:"Bearer "+token}:{})}}); }
+  catch(e){ throw {code:"rede",message:"Sem conexão com o servidor. Verifique a API_URL em config.js."}; }
+  if(r.status===401&&!["/api/login","/api/setup"].includes(path)){ sair(); throw {code:"auth",message:"Sessão expirada. Entre novamente."}; }
+  if(r.status===204) return null;
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok) throw {code:r.status,message:j.erro||("Erro "+r.status)};
+  return j;
+}
+const store={
+  items:[], listeners:[],
+  onChange(fn){this.listeners.push(fn)},
+  emit(){this.listeners.forEach(f=>f(this.items))},
+  async load(){
+    $("#storeMsg").textContent="Carregando…";
+    try{ this.items=await api("/api/propostas"); $("#storeMsg").textContent=""; this.emit(); }
+    catch(e){ if(e.code!=="auth") $("#storeMsg").textContent=e.message; }
+  },
+  get(id){ return api("/api/propostas/"+encodeURIComponent(id)); },
+  async save(doc){
+    const body=JSON.stringify(doc,(k,v)=>k.startsWith("_")?undefined:v);
+    const r=doc.id?await api("/api/propostas/"+encodeURIComponent(doc.id),{method:"PUT",body}):await api("/api/propostas",{method:"POST",body});
+    this.load(); return r.id;
+  },
+  patch(id,campo,valor){ return api("/api/propostas/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({[campo]:valor})}); },
+  async remove(id){ await api("/api/propostas/"+encodeURIComponent(id),{method:"DELETE"}); await this.load(); }
+};
+function sair(){ if(window.FlexOp&&window.FlexOp.pararAvisos) window.FlexOp.pararAvisos(); token=""; usuario=null; try{localStorage.removeItem(TK);localStorage.removeItem(UK)}catch(e){} atual=null; mostrarQuem(); telaLogin(); }
+
+/* ================= navegação ================= */
+let atual=null;
+function go(v){
+  if(usuario&&v!=="login"&&!telas().includes(v)&&!(v==="preview"&&atual)) v=telas()[0];
+  ["login","list","form","preview","audit","admin","rel","os","estoque"].forEach(k=>{$("#view-"+k).hidden=k!==v});
+  document.querySelector(".top nav").hidden=v==="login";
+  document.querySelectorAll(".tab[data-go]").forEach(t=>t.setAttribute("aria-current",t.dataset.go===v?"page":"false"));
+  $("#tabForm").disabled=!atual; $("#tabPrev").disabled=!atual;
+  if(v==="preview") montarPreview();
+  if(v==="audit") carregarAuditoria();
+  if(v==="rel") montarRelatorios();
+  if(v==="os"){ if(window.FlexOp) window.FlexOp.abrirOS(); }
+  if(v==="estoque"){ if(window.FlexOp) window.FlexOp.abrirEstoque(); }
+  if(v==="admin"){ if(window.FlexAdmin) window.FlexAdmin.abrir(); else toast("Carregando a administração…"); }
+  window.scrollTo(0,0);
+}
+document.querySelectorAll(".tab[data-go]").forEach(t=>t.addEventListener("click",()=>{ if(t.dataset.go==="form"||t.dataset.go==="preview") coletar(); if(t.dataset.go==="audit") auditFiltro=null; go(t.dataset.go); }));
+
+/* ================= lista ================= */
+function renderLista(todos){
+  const termos=String($("#listBusca")?.value||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().split(/\s+/).filter(Boolean);
+  const items=termos.length?todos.filter(p=>{ const t=[p.numero,p.razao,p.fantasia,p.cnpj,p.status,p.andamento,p.statusPag,(PRODUTOS[p.produto]||{}).nome].join(" ").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase(); return termos.every(x=>t.includes(x)); }):todos;
+  const box=$("#listBox");
+  if(termos.length&&!items.length&&todos.length){ box.innerHTML=`<div class="empty"><strong>Nada encontrado</strong><p>Nenhuma proposta com "${esc($("#listBusca").value)}".</p></div>`; return; }
+  if(!items.length){
+    box.innerHTML=`<div class="empty"><strong>Nenhuma proposta ainda</strong><p>Comece uma nova proposta, preencha os dados do cliente e os valores, e baixe o PDF pronto no modelo da Flex Solar.</p><button class="btn" id="btnNova2">Nova proposta</button></div>`;
+    $("#btnNova2").onclick=()=>abrirNova();
+    return;
+  }
+  box.innerHTML=`<table class="list"><thead><tr><th>Nº</th><th>Cliente</th><th>Data</th><th>Total</th><th>Situação da proposta</th><th>Andamento do projeto</th><th>Pagamento</th><th></th></tr></thead><tbody>${
+    items.map(p=>`<tr>
+      <td class="num">${esc(p.numero||"—")}</td>
+      <td>${esc(p.fantasia||p.razao||"Sem nome")}<span class="sub">${esc((PRODUTOS[p.produto]||{}).nome||p.produto)}</span></td>
+      <td class="num">${p.data?dataCurta(p.data):"—"}</td>
+      <td class="num">${brl(Number(p.total)||0)}</td>
+      ${["status","andamento","statusPag"].map(c=>`<td><select class="st" data-id="${esc(p.id)}" data-campo="${c}" data-tone="${TOM[p[c]]||"gray"}" aria-label="${ROTULO_SIT[c]} de ${esc(p.numero||"")}">${opcoesHTML(c,p[c])}</select></td>`).join("")}
+      <td class="acoes" style="white-space:nowrap;text-align:right">
+        <button class="btn link" data-a="abrir" data-id="${esc(p.id)}">Abrir</button>
+        <button class="btn link" data-a="pdf" data-id="${esc(p.id)}">Baixar PDF</button>
+        <button class="btn link" data-a="dup" data-id="${esc(p.id)}">Duplicar</button>
+        <button class="btn link" data-a="hist" data-id="${esc(p.id)}">Histórico</button>
+        ${usuario&&usuario.perfil==="admin"&&p.produto==="solar"?`<button class="btn link" data-a="custos" data-id="${esc(p.id)}">Custos</button>`:""}
+        <button class="btn del" data-a="del" data-id="${esc(p.id)}">Excluir</button>
+      </td></tr>`).join("")}</tbody></table>`;
+  box.querySelectorAll("button[data-a]").forEach(b=>b.addEventListener("click",async()=>{
+    const p=store.items.find(x=>x.id===b.dataset.id); if(!p) return;
+    if(b.dataset.a==="custos"){ if(window.FlexAdmin) window.FlexAdmin.verComposicao(p.id); return; }
+    if(b.dataset.a==="hist"){ auditFiltro={id:p.id,numero:p.numero}; go("audit"); return; }
+    if(b.dataset.a==="pdf"){ try{ carregar(await store.get(p.id)); go("preview"); await baixarPdf(); }catch(e){ toast(e.message||"Não foi possível gerar o PDF") } return; }
+    if(b.dataset.a==="abrir"){ try{ carregar(await store.get(p.id)); go("preview"); }catch(e){ toast(e.message) } }
+    if(b.dataset.a==="dup"){ let c; try{ c=await store.get(p.id) }catch(e){ toast(e.message); return } delete c.id; delete c.updatedAt; c.numero=""; c.status="Rascunho"; c.andamento="Não iniciado"; c.statusPag="Pendente"; c.data=hojeISO(); carregar(c); go("form"); toast("Cópia criada. Ajuste os dados e salve."); }
+    if(b.dataset.a==="del"){ if(confirm("Excluir a proposta "+(p.numero||"")+"? Essa ação não pode ser desfeita.")){ try{await store.remove(p.id);toast("Proposta excluída")}catch(e){toast(e.message||"Não foi possível excluir")} } }
+  }));
+  box.querySelectorAll("select.st").forEach(sl=>sl.addEventListener("change",async()=>{
+    const p=store.items.find(x=>x.id===sl.dataset.id); if(!p) return;
+    const campo=sl.dataset.campo, antes=p[campo], novo=sl.value;
+    sl.dataset.tone=TOM[novo]||"gray"; sl.disabled=true;
+    try{ await store.patch(p.id,campo,novo); p[campo]=novo; if(atual&&atual.id===p.id) atual[campo]=novo; toast(ROTULO_SIT[campo]+": "+novo); }
+    catch(e){ sl.value=antes; sl.dataset.tone=TOM[antes]||"gray"; toast(e.message||"Não foi possível alterar"); }
+    finally{ sl.disabled=false; }
+  }));
+}
+store.onChange(renderLista);
+$("#listBusca").addEventListener("input",()=>renderLista(store.items));
+
+renderLista(store.items);
+
+$("#productsBox").innerHTML=Object.entries(PRODUTOS).map(([k,p])=>p.ativo
+  ?`<button type="button" class="prod" data-prod="${k}"><strong>${esc(p.nome)}</strong><span>${esc(p.descricao)}</span><em>+ Nova proposta</em></button>`
+  :`<div class="prod soon"><strong>${esc(p.nome)}</strong><span>${esc(p.descricao)}</span></div>`).join("");
+$("#productsBox").querySelectorAll("[data-prod]").forEach(b=>b.onclick=()=>abrirNova(b.dataset.prod));
+
+/* ================= formulário ================= */
+for(const c in OPCOES){ $("#"+c).innerHTML=opcoesHTML(c,OPCOES[c][0]); }
+const sel=$("#produto");
+sel.innerHTML=Object.entries(PRODUTOS).map(([k,p])=>`<option value="${k}" ${p.ativo?"":"disabled"}>${esc(p.nome)}${p.ativo?"":" (em breve)"}</option>`).join("");
+
+function montarCamposProduto(prod){
+  const p=PRODUTOS[prod]||PRODUTOS.watcher;
+  $("#prodFields").innerHTML=p.fields||"";
+  $("#prodFields").classList.toggle("full",prod==="solar");
+  document.querySelectorAll("[data-so]").forEach(e=>{ e.hidden=e.dataset.so!==prod; });
+  ligarCampos();
+}
+
+function fmtTel(v){
+  const d=String(v||"").replace(/\D/g,"").slice(0,11);
+  if(d.length<=2) return d?"("+d:"";
+  if(d.length<=6) return "("+d.slice(0,2)+") "+d.slice(2);
+  if(d.length<=10) return "("+d.slice(0,2)+") "+d.slice(2,6)+"-"+d.slice(6);
+  return "("+d.slice(0,2)+") "+d.slice(2,7)+"-"+d.slice(7);
+}
+function ligarCampos(){ document.querySelectorAll("#frm [name]").forEach(el=>{ el.oninput=()=>{ if(el.name==="telefone") el.value=fmtTel(el.value); coletar();autoNumero(el.name);atualizarTotal();
+  if(atual&&atual.produto==="solar"&&CAMPOS_CALC.includes(el.name)&&atual.calc&&!atual._calcVelho){ atual._calcVelho=true; mostrarCalculo(); } }; }); }
+
+/* ---------- numeração automática: DD-MM-FLEX_SIGLA_001 ---------- */
+const PALAVRAS_IGNORADAS=new Set(["LTDA","ME","EPP","EIRELI","SA","S","A","O","DE","DA","DO","DAS","DOS","E","EM","SLU","CIA"]);
+function siglaDe(razao){
+  const limpo=String(razao||"").split("—")[0].normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z0-9 ]/g," ");
+  const pal=limpo.split(/\s+/).filter(w=>w&&!PALAVRAS_IGNORADAS.has(w));
+  if(!pal.length) return "";
+  if(pal[0].length<=4) return pal[0];                     // ex.: "JVM INDÚSTRIA..." → JVM
+  return pal.slice(0,3).map(w=>w[0]).join("");             // ex.: "Padaria Pão de Mel" → PPM
+}
+function proximoNumero(d){
+  const sig=(d.sigla||"CLI").toUpperCase();
+  const {m,d:dia}=parseISO(d.data);
+  const re=new RegExp("FLEX_"+sig.replace(/[^A-Z0-9]/g,"")+"_(\\d+)$");
+  const usados=store.items.filter(p=>p.id!==d.id).map(p=>{const r=re.exec(p.numero||"");return r?parseInt(r[1],10):0});
+  const seq=(usados.length?Math.max(0,...usados):0)+1;
+  return String(dia).padStart(2,"0")+"-"+String(m).padStart(2,"0")+"-FLEX_"+sig+"_"+String(seq).padStart(3,"0");
+}
+function autoNumero(campo){
+  if(!atual) return;
+  if(campo==="numero"){ atual._numManual=!!atual.numero; if(atual.numero) return; }
+  if(campo==="sigla"){ atual.sigla=atual.sigla.toUpperCase().replace(/[^A-Z0-9]/g,""); $("#sigla").value=atual.sigla; atual._siglaManual=!!atual.sigla; }
+  if(!atual._siglaManual && (campo==="razao"||campo==="init"||!atual.sigla)){ atual.sigla=siglaDe(atual.razao); $("#sigla").value=atual.sigla; }
+  if(atual.id||atual._numManual) return;                  // proposta já salva mantém o número
+  if(["razao","sigla","data","numero","init"].includes(campo)){ atual.numero=atual.sigla?proximoNumero(atual):""; $("#numero").value=atual.numero; }
+}
+
+function carregar(d){
+  atual=normSit(d);
+  montarCamposProduto(d.produto);
+  document.querySelectorAll("#frm [name]").forEach(el=>{ if(el.type==="checkbox") el.checked=!!d[el.name]; else el.value=d[el.name]??""; });
+  if(!d.id){ d._numManual=false; d._siglaManual=!!d.sigla&&d.sigla!==siglaDe(d.razao); }
+  if((PRODUTOS[d.produto]||{}).aoMontar) PRODUTOS[d.produto].aoMontar();
+  autoNumero("init");
+  mostrarLogo(); atualizarTotal();
+  $("#formTitle").textContent=d.id?"Proposta "+(d.numero||""):"Nova proposta";
+  $("#saveMsg").textContent="";
+}
+function coletar(){
+  if(!atual) return;
+  document.querySelectorAll("#frm [name]").forEach(el=>{ atual[el.name]=el.type==="checkbox"?el.checked:el.type==="number"?(el.value===""?"":n(el.value)):el.value; });
+}
+function atualizarTotal(){ if(atual) $("#totalOut").textContent=brl(total(atual)); }
+function abrirNova(prod){ carregar(novaBase(typeof prod==="string"&&PRODUTOS[prod]?prod:"watcher")); go("form"); }
+
+$("#btnNova").onclick=abrirNova;
+sel.addEventListener("change",()=>{ coletar(); const base=novaBase(sel.value); Object.keys(PRODUTOS[sel.value].defaults||{}).forEach(k=>{atual[k]=base[k]}); carregar(atual); });
+$("#btnExemplo").onclick=()=>{ const keep=atual&&atual.id, prod=(atual&&atual.produto)||"watcher";
+  const ex=prod==="watcher"?JSON.parse(JSON.stringify(EXEMPLO)):{...novaBase(prod),...(PRODUTOS[prod].exemplo||{})};
+  carregar({...ex,id:keep||undefined}); toast("Exemplo carregado"); };
+
+/* ================= relatórios ================= */
+const RELS={
+  vendidos:{nome:"Vendidos",desc:"Propostas fechadas no período",ref:"Data da venda"},
+  pagos:{nome:"Pagos",desc:"Pagamento concluído no período",ref:"Data do pagamento"},
+  areceber:{nome:"A receber",desc:"Vendidos com pagamento pendente, parcial ou em atraso",ref:"Data da venda"},
+  ainstalar:{nome:"A instalar",desc:"Vendidos que ainda não foram instalados",ref:"Data da venda"},
+  estoque:{nome:"No estoque",desc:"Posição atual do estoque: físico, reservado e disponível",item:true},
+  comprar:{nome:"A comprar",desc:"Material reservado para vendas que falta no estoque",item:true},
+};
+let relTipo="vendidos", relDados=[];
+const isoDe=d=>d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+function relPreset(p){
+  const h=new Date(), y=h.getFullYear(), m=h.getMonth();
+  const r={mes:[new Date(y,m,1),new Date(y,m+1,0)],mesant:[new Date(y,m-1,1),new Date(y,m,0)],d30:[new Date(y,m,h.getDate()-29),h],
+           tri:[new Date(y,Math.floor(m/3)*3,1),new Date(y,Math.floor(m/3)*3+3,0)],ano:[new Date(y,0,1),new Date(y,11,31)],tudo:[null,null]}[p];
+  if(!r) return;
+  $("#relDe").value=r[0]?isoDe(r[0]):""; $("#relAte").value=r[1]?isoDe(r[1]):"";
+  document.querySelectorAll("#relPresets .chip").forEach(c=>c.setAttribute("aria-pressed",c.dataset.p===p));
+  carregarRelatorio();
+}
+function montarRelatorios(){
+  $("#relTipos").innerHTML=Object.entries(RELS).map(([k,r])=>`<button class="chip" data-t="${k}" aria-pressed="${k===relTipo}" ${r.soon?"disabled title=\"Disponível com o controle de estoque\"":""}>${r.nome}${r.soon?" · em breve":""}</button>`).join("");
+  $("#relTipos").querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>{ relTipo=b.dataset.t; $("#relTipos").querySelectorAll(".chip").forEach(c=>c.setAttribute("aria-pressed",c===b)); carregarRelatorio(); });
+  if(!$("#relDe").value&&!$("#relAte").value&&!montarRelatorios.feito){ montarRelatorios.feito=true; relPreset("mes"); return; }
+  carregarRelatorio();
+}
+async function carregarRelatorio(){
+  const box=$("#relBox"); box.innerHTML=`<div class="empty"><p>Carregando…</p></div>`;
+  document.querySelector(".rel-filtros .toolbar").style.display=RELS[relTipo].item?"none":"";
+  if(RELS[relTipo].item){ try{ relDados=await api("/api/relatorios/estoque?tipo="+relTipo); desenharRelEstoque(); }catch(e){ box.innerHTML=`<div class="empty"><p>${esc(e.message)}</p></div>`; } return; }
+  const q=new URLSearchParams({tipo:relTipo}); if($("#relDe").value) q.set("de",$("#relDe").value); if($("#relAte").value) q.set("ate",$("#relAte").value); if($("#relProduto").value) q.set("produto",$("#relProduto").value);
+  try{ relDados=await api("/api/relatorios?"+q); desenharRelatorio(); }
+  catch(e){ box.innerHTML=`<div class="empty"><p>${esc(e.message)}</p></div>`; }
+}
+function desenharRelatorio(){
+  const r=RELS[relTipo], de=$("#relDe").value, ate=$("#relAte").value, prod=$("#relProduto").value;
+  const periodo=de||ate?`${de?dataCurta(de):"início"} a ${ate?dataCurta(ate):"hoje"}`:"Todo o período";
+  const total=relDados.reduce((s,x)=>s+x.total,0), kwp=relDados.reduce((s,x)=>s+(Number(x.kwp)||0),0);
+  const comKwp=relDados.some(x=>x.kwp);
+  const fdt=v=>v?new Date(v).toLocaleDateString("pt-BR"):"—";
+  $("#relBox").innerHTML=`<div class="rel-doc">
+    <div class="rel-cab"><img src="flex-solar.jpg" alt="Flex Solar"><div><h2>Relatório — ${esc(r.nome)}</h2>
+      <p>${esc(r.desc)} · Período: <strong>${esc(periodo)}</strong> (${esc(r.ref.toLowerCase())})${prod?` · Produto: <strong>${esc(PRODUTOS[prod].nome)}</strong>`:""}</p>
+      <p class="status-msg">Gerado em ${new Date().toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"})}${usuario?" por "+esc(usuario.nome):""}</p></div></div>
+    <div class="rel-resumo"><div><span>Propostas</span><strong>${relDados.length}</strong></div><div><span>Valor total</span><strong>${brl(total)}</strong></div>
+      ${comKwp?`<div><span>Potência solar</span><strong>${n2(kwp,2)} kWp</strong></div>`:""}<div><span>Ticket médio</span><strong>${relDados.length?brl(total/relDados.length):"—"}</strong></div></div>
+    ${relDados.length?`<div class="list-wrap"><table class="adm rel-tab"><thead><tr><th>Nº</th><th>Cliente</th><th>Produto</th><th>Vendedor</th><th>${esc(r.ref)}</th>
+      <th>Pagamento</th><th>Andamento</th>${relTipo==="pagos"?"":"<th>Pago em</th>"}<th class="n">Valor</th></tr></thead><tbody>${
+      relDados.map(x=>`<tr><td><strong>${esc(x.numero)}</strong></td><td>${esc(x.cliente)}</td><td>${esc((PRODUTOS[x.produto]||{}).nome||x.produto)}${x.kwp?` <span class="status-msg">${n2(x.kwp,2)} kWp</span>`:""}</td>
+        <td>${esc(x.vendedor||"—")}</td><td>${x.dataRef?dataCurta(x.dataRef):"—"}</td>
+        <td><span class="tag" data-tone="${TOM[x.statusPag]||"gray"}">${esc(x.statusPag)}</span></td><td><span class="tag" data-tone="${TOM[x.andamento]||"gray"}">${esc(x.andamento)}</span></td>
+        ${relTipo==="pagos"?"":`<td>${fdt(x.pagaEm)}</td>`}<td class="n">${brl(x.total)}</td></tr>`).join("")}
+      <tr class="rel-tot"><td colspan="${relTipo==="pagos"?7:8}">Total (${relDados.length})</td><td class="n">${brl(total)}</td></tr></tbody></table></div>`
+      :`<div class="empty"><strong>Nenhuma proposta neste relatório</strong><p>Mude o período ou o produto.</p></div>`}
+  </div>`;
+}
+function desenharRelEstoque(){
+  const r=RELS[relTipo], admin=usuario&&usuario.perfil==="admin", q=v=>Number(v||0).toLocaleString("pt-BR",{maximumFractionDigits:3});
+  const comprar=relTipo==="comprar";
+  const valor=relDados.reduce((s,i)=>s+(i.custo||0)*(comprar?i.comprar:Math.max(0,i.fisico)),0);
+  $("#relBox").innerHTML=`<div class="rel-doc">
+    <div class="rel-cab"><img src="flex-solar.jpg" alt="Flex Solar"><div><h2>Relatório — ${esc(r.nome)}</h2>
+      <p>${esc(r.desc)} · <strong>Posição em ${new Date().toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"})}</strong></p>
+      <p class="status-msg">Gerado${usuario?" por "+esc(usuario.nome):""}</p></div></div>
+    <div class="rel-resumo"><div><span>Itens</span><strong>${relDados.length}</strong></div>${admin?`<div><span>${comprar?"Custo estimado da compra":"Valor em estoque (custo)"}</span><strong>${brl(valor)}</strong></div>`:""}</div>
+    ${relDados.length?`<div class="list-wrap"><table class="adm rel-tab"><thead><tr><th>Código</th><th>Descrição</th>${comprar?`<th class="n">Reservado</th><th class="n">Físico</th><th class="n">A comprar</th><th>Propostas</th>`:`<th class="n">Físico</th><th class="n">Reservado</th><th class="n">Disponível</th>`}${admin?'<th class="n">Valor</th>':""}</tr></thead><tbody>${
+      relDados.map(i=>`<tr><td><strong>${esc(i.codigo)}</strong></td><td>${esc(i.descricao)}</td>${comprar
+        ?`<td class="n">${q(i.reservado)}</td><td class="n">${q(i.fisico)}</td><td class="n"><strong>${q(i.comprar)} ${esc(i.unidade)}</strong></td><td>${esc(i.propostas||"")}</td>`
+        :`<td class="n">${q(i.fisico)} ${esc(i.unidade)}</td><td class="n">${q(i.reservado)}</td><td class="n">${i.disponivel<0?`<span class="tag" data-tone="red">${q(i.disponivel)}</span>`:q(i.disponivel)}</td>`}
+        ${admin?`<td class="n">${brl((i.custo||0)*(comprar?i.comprar:Math.max(0,i.fisico)))}</td>`:""}</tr>`).join("")}</tbody></table></div>`
+      :`<div class="empty"><strong>${comprar?"Nada a comprar":"Estoque vazio"}</strong><p>${comprar?"Todo o material reservado para vendas está disponível em estoque.":"Nenhum item com saldo."}</p></div>`}
+  </div>`;
+}
+function baixarRelatorio(){
+  const r=RELS[relTipo], de=r.item?"posicao":($("#relDe").value||"inicio"), ate=r.item?new Date().toISOString().slice(0,10):($("#relAte").value||"hoje");
+  const titulo=document.title; document.title=`Relatorio_${r.nome.replace(/\s+/g,"_")}_${de}_a_${ate}`.normalize("NFD").replace(/[\u0300-\u036f]/g,"");
+  document.body.classList.add("print-rel");
+  const fim=()=>{ document.body.classList.remove("print-rel"); document.title=titulo; window.removeEventListener("afterprint",fim); };
+  window.addEventListener("afterprint",fim);
+  try{ window.print(); }catch(e){ fim(); }
+}
+$("#relDe").addEventListener("change",()=>{ document.querySelectorAll("#relPresets .chip").forEach(c=>c.setAttribute("aria-pressed","false")); carregarRelatorio(); });
+$("#relAte").addEventListener("change",()=>{ document.querySelectorAll("#relPresets .chip").forEach(c=>c.setAttribute("aria-pressed","false")); carregarRelatorio(); });
+$("#relProduto").addEventListener("change",carregarRelatorio);
+document.querySelectorAll("#relPresets .chip").forEach(c=>c.onclick=()=>relPreset(c.dataset.p));
+$("#relPdf").onclick=baixarRelatorio;
+
+/* ================= auditoria ================= */
+let auditFiltro=null, auditItens=[];
+const CAMPOS={numero:"Nº da proposta",status:"Situação da proposta",andamento:"Andamento do projeto",statusPag:"Situação do pagamento",
+  produto:"Produto",data:"Data",validade:"Validade (dias)",cidade:"Local de emissão",sigla:"Sigla do cliente",
+  razao:"Razão social",fantasia:"Nome fantasia",cnpj:"CNPJ",contato:"Contato",telefone:"Telefone",endereco:"Endereço",distribuidora:"Distribuidora",grupo:"Tipo de ligação",uc:"Nº da UC",
+  logo:"Logo do cliente",cor:"Cor da frase",slogan:"Frase de abertura",atividade:"Atividade do cliente",cargas:"Cargas específicas",
+  corrente:"Corrente dos TCs (A)",qtdMed:"Quantidade de medidores",ponto:"Ponto de instalação",obsInst:"Observação da instalação",
+  vEquip:"Equipamentos (R$)",vInst:"Instalação (R$)",vMensal:"Assinatura mensal (R$)",mesesGratis:"Meses grátis",pagamento:"Condições de pagamento",
+  prazo:"Prazo de implantação",garEquip:"Garantia equipamentos",garServ:"Garantia instalação",
+  empNome:"Razão social Flex",empTel:"Telefone Flex",empEnd:"Endereço Flex",empSup:"Suporte Flex",
+  codigo:"Código",categoria:"Categoria",descricao:"Descrição",marca:"Marca",modelo:"Modelo",potencia_w:"Potência (W)",unidade:"Unidade",custo:"Custo (R$)",ativo:"Ativo",
+  potencia_kw:"Potência (kW)",itens:"Componentes",maoObraPlaca:"Mão de obra (R$/placa)",custoKm:"Custo por km (R$)",
+  pctManutencao:"Manutenção (%)",pctAdm:"Administração (%)",pctImposto:"Imposto (%)",pctMargem:"Margem (%)",pctComercial:"Comercial (%)",metodo:"Método de cálculo",
+  nome:"Nome",email:"E-mail",perfil:"Perfil",senha:"Senha",ligacao:"Ligação",estoque:"Controlar estoque",
+  consumo:"Consumo (kWh/mês)",tarifa:"Tarifa (R$/kWh)",ligacaoSol:"Ligação do cliente",telhado:"Tipo de telhado",km:"Deslocamento (km)",moduloCod:"Módulo",inversorCod:"Inversor",qtdModulos:"Nº de módulos",
+  precoTotal:"Preço total (R$)",negociacao:"Negociação de preço",visitaTecnica:"Visita técnica",pagamentoSol:"Condições de pagamento",prazoEntrega:"Prazo de entrega (dias)",garantiaModulo:"Garantia módulos (anos)",garantiaInversor:"Garantia inversor (meses)",garantiaInstalacao:"Garantia instalação (meses)",
+  hsp:"Irradiação (HSP)",fonteIrradiacao:"Fonte da irradiação",cidadeIrradiacao:"Cidade da irradiação",pr:"Performance ratio (%)",sobredim:"Sobredimensionamento",areaModulo:"Área por módulo (m²)",pesoModulo:"Peso por módulo (kg)",
+  arredondamento:"Arredondamento (R$)",itensPorModulo:"Itens por módulo",garantiaModulo:"Garantia módulos (anos)"};
+const ENTIDADES={proposta:"Proposta",preco:"Preço",kit:"Kit",estrutura:"Estrutura",parametros:"Parâmetros",usuario:"Usuário",estoque:"Estoque"};
+const ACOES={criou:["Criou","green"],editou:["Editou","blue"],status:["Mudou situação","amber"],excluiu:["Excluiu","red"],importou:["Importou planilha","blue"],entrada:["Entrada","green"],saida:["Saída","amber"],ajuste:["Ajuste","gray"]};
+const valorAud=(campo,v)=>{ if(v===""||v==null) return "(vazio)"; if(campo==="grupo") return v==="A"?"Média tensão":v==="B"?"Baixa tensão":v;
+  if(campo==="data"&&/^\d{4}-\d{2}-\d{2}$/.test(v)) return dataCurta(v); if(campo==="produto") return (PRODUTOS[v]||{}).nome||v; if(campo==="categoria") return ({modulo:"Módulo",inversor:"Inversor",componente:"Componente elétrico",ferragem:"Ferragem",bateria:"Bateria",outros:"Outros"})[v]||v;
+  if(campo==="metodo") return v==="fora"?"Por fora":"Por dentro"; if(campo==="perfil") return ({admin:"Administrador",comercial:"Comercial",almoxarife:"Almoxarife"})[v]||v; if(campo==="visitaTecnica") return v==="true"?"Solicitada":"Não solicitada"; if(campo==="negociacao") return v===""||v==null?"(vazio)":(Math.round(n(v)*100)+"% do desconto autorizado"); if(campo==="ligacaoSol") return ({mono220:"Monofásico 220 V",tri220:"Trifásico 220 V",tri380:"Trifásico 380 V"})[v]||v; if(campo==="ligacao") return ({mono220:"Monofásico 220 V",tri220:"Trifásico 220 V",tri380:"Trifásico 380 V"})[v]||v; if(campo==="ativo") return v==="true"?"Sim":v==="false"?"Não":v; return v; };
+
+async function carregarAuditoria(){
+  const box=$("#auditBox"); box.innerHTML=`<div class="empty"><p>Carregando…</p></div>`;
+  const f=$("#auditFiltro");
+  if(auditFiltro){ f.hidden=false; f.innerHTML=`Mostrando o histórico da proposta <strong>${esc(auditFiltro.numero||"")}</strong> <button class="btn link" id="auditLimpar" type="button">Ver tudo</button>`; $("#auditLimpar").onclick=()=>{auditFiltro=null;carregarAuditoria();}; }
+  else f.hidden=true;
+  try{ const tipo=usuario&&usuario.perfil==="admin"&&!auditFiltro?$("#auditTipo").value:""; auditItens=await api("/api/auditoria?limite=500"+(auditFiltro?"&proposta="+encodeURIComponent(auditFiltro.id):"")+(tipo?"&entidade="+tipo:"")); renderAuditoria(); }
+  catch(e){ box.innerHTML=`<div class="empty"><p>${esc(e.message)}</p></div>`; }
+}
+function renderAuditoria(){
+  const q=$("#auditBusca").value.trim().toLowerCase();
+  const itens=auditItens.filter(a=>!q||[a.numero,a.cliente,a.usuario,...(a.alteracoes||[]).map(x=>(CAMPOS[x.campo]||x.campo)+" "+x.de+" "+x.para)].join(" ").toLowerCase().includes(q));
+  const box=$("#auditBox");
+  if(!itens.length){ box.innerHTML=`<div class="empty"><strong>${auditItens.length?"Nada encontrado com esse filtro":"Nenhum registro ainda"}</strong><p>${auditItens.length?"Tente outro termo.":"Cada proposta criada, editada, com situação alterada ou excluída aparece aqui."}</p></div>`; return; }
+  box.innerHTML=`<table class="audit"><thead><tr><th>Quando</th><th>Usuário</th><th>Item</th><th>Ação</th><th>Alterações</th></tr></thead><tbody>${
+    itens.map(a=>{ const [rot,tom]=ACOES[a.acao]||[a.acao,"gray"]; const alts=a.alteracoes||[];
+      return `<tr><td class="quando">${new Date(a.em).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"})}</td>
+      <td>${esc(a.usuario)}</td><td><span class="tag" data-tone="gray">${esc(ENTIDADES[a.entidade]||"Proposta")}</span> <strong>${esc(a.numero||"—")}</strong><br><span class="status-msg">${esc(a.cliente||"")}</span></td>
+      <td><span class="acao" data-tone="${tom}">${esc(rot)}</span></td>
+      <td>${alts.length?alts.map(x=>`<p class="alt"><b>${esc(CAMPOS[x.campo]||x.campo)}:</b> <s>${esc(valorAud(x.campo,x.de))}</s> → ${esc(valorAud(x.campo,x.para))}</p>`).join(""):`<span class="status-msg">—</span>`}</td></tr>`; }).join("")}</tbody></table>`;
+}
+$("#auditBusca").addEventListener("input",renderAuditoria);
+$("#auditAtualizar").onclick=carregarAuditoria;
+$("#auditTipo").addEventListener("change",carregarAuditoria);
+
+/* logo do cliente: reduzido para caber no armazenamento */
+function mostrarLogo(){ $("#logoPrev").innerHTML=atual&&atual.logo?`<img src="${atual.logo}" alt="Logo do cliente">`:`<span>Sem logo</span>`; }
+$("#btnLogo").onclick=()=>$("#logoFile").click();
+$("#btnLogoDel").onclick=()=>{ if(atual){atual.logo="";mostrarLogo();} };
+$("#logoFile").addEventListener("change",e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ const img=new Image(); img.onload=()=>{
+      const max=500, k=Math.min(1,max/Math.max(img.width,img.height));
+      const c=document.createElement("canvas"); c.width=Math.round(img.width*k); c.height=Math.round(img.height*k);
+      const g=c.getContext("2d"); g.fillStyle="#fff"; g.fillRect(0,0,c.width,c.height); g.drawImage(img,0,0,c.width,c.height);
+      atual.logo=c.toDataURL("image/jpeg",0.9); mostrarLogo();
+    }; img.onerror=()=>toast("Não foi possível ler essa imagem. Use PNG ou JPG."); img.src=r.result; };
+  r.readAsDataURL(f); e.target.value="";
+});
+
+function validar(){
+  const falta=[]; if(!atual.razao)falta.push("razão social"); if(!atual.numero)falta.push("nº da proposta");
+  if(falta.length){ toast("Preencha: "+falta.join(" e ")); return false; } return true;
+}
+async function salvar(){
+  coletar(); if(!validar()) return false;
+  const b=$("#btnSalvar"); b.disabled=true;
+  try{ const id=await store.save(atual); atual.id=id; $("#saveMsg").textContent="Salvo às "+new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"}); $("#formTitle").textContent="Proposta "+atual.numero; return true; }
+  catch(e){ toast(e.message||"Não foi possível salvar. Tente de novo."); return false; }
+  finally{ b.disabled=false; }
+}
+$("#btnSalvar").onclick=salvar;
+$("#btnGerar").onclick=async()=>{
+  coletar();
+  if(atual&&atual.produto==="solar"&&(!atual.calc||atual._calcVelho)){ toast("Clique em Calcular sistema antes de gerar a proposta."); $("#btnCalcSolar")&&$("#btnCalcSolar").focus(); return; }
+  if(await salvar()) go("preview"); };
+
+/* ================= pré-visualização e PDF ================= */
+function montarPreview(){ if(atual){ const el=$("#proposta"); el.innerHTML=renderProposta(atual); el.contentEditable="true"; el.spellcheck=false; } }
+$("#btnVoltar").onclick=()=>go("form");
+
+
+$("#btnPdf").onclick=()=>baixarPdf();
+async function baixarPdf(){
+  // PDF gerado pelo próprio navegador: texto nítido e selecionável e quebras de página
+  // controladas pelo CSS de impressão. O título da página vira o nome sugerido do arquivo.
+  const nome=("Proposta_"+(PRODUTOS[atual.produto]||{nome:""}).nome+"_"+(atual.fantasia||atual.razao)+"_"+atual.numero)
+      .normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Za-z0-9_-]+/g,"_").replace(/_+/g,"_");
+  const titulo=document.title, el=$("#proposta");
+  const restaurar=()=>{ document.title=titulo; el.contentEditable="true"; window.removeEventListener("afterprint",restaurar); };
+  window.addEventListener("afterprint",restaurar);
+  await Promise.all([...el.querySelectorAll("img")].map(i=>i.complete?0:new Promise(r=>{i.onload=i.onerror=r})));
+  document.title=nome; el.contentEditable="false"; if(document.activeElement) document.activeElement.blur();
+  try{ window.print(); }catch(e){ restaurar(); toast("Não foi possível abrir a janela de impressão."); }
+}
+function montarPreviewKeepEdits(){ $("#proposta").contentEditable="true"; }
+
+/* ---------- telas por perfil ---------- */
+const TELAS={admin:["list","form","preview","os","estoque","rel","audit","admin"],comercial:["list","form","preview","os","rel","audit"],
+  almoxarife:["os","estoque"],engenharia:["os"],comprador:["os","estoque","rel"],campo:["os"]};
+const ROT_PERFIL={admin:"admin",comercial:"comercial",almoxarife:"logística",engenharia:"engenharia",comprador:"comprador",campo:"equipe de campo"};
+const telas=()=>TELAS[(usuario&&usuario.perfil)||"comercial"]||["os"];
+const podeProposta=()=>!!usuario&&["admin","comercial"].includes(usuario.perfil);
+function irInicio(){ if(telas().includes("list")){ go("list"); store.load(); } else go("os"); if(window.FlexOp) window.FlexOp.iniciarAvisos(); else setTimeout(()=>window.FlexOp&&window.FlexOp.iniciarAvisos(),800); }
+function mostrarQuem(){
+  const admin=!!(usuario&&usuario.perfil==="admin");
+  const t=telas();
+  document.querySelector('.tab[data-go="list"]').hidden=!t.includes("list");
+  $("#tabForm").hidden=!t.includes("form"); $("#tabPrev").hidden=!t.includes("preview");
+  $("#tabOS").hidden=!t.includes("os"); $("#tabRel").hidden=!t.includes("rel"); $("#tabAudit").hidden=!t.includes("audit");
+  $("#btnVoltar").hidden=!podeProposta();
+  $("#quem").textContent=usuario?usuario.nome+(usuario.perfil==="comercial"?"":" · "+(ROT_PERFIL[usuario.perfil]||usuario.perfil)+(usuario.equipe?" "+usuario.equipe:"")):"";
+  $("#tabAdmin").hidden=!admin; $("#auditTipo").hidden=!admin;
+  $("#tabEstoque").hidden=!t.includes("estoque");
+}
+function guardarSessao(j){ token=j.token; usuario=j.usuario; try{localStorage.setItem(TK,token);localStorage.setItem(UK,JSON.stringify(usuario))}catch(err){} mostrarQuem(); }
+async function telaLogin(){
+  go("login");
+  try{ const s=await api("/api/setup"); $("#loginSetup").hidden=!s.precisaAdmin; $("#loginNormal").hidden=!!s.precisaAdmin; }
+  catch(e){ $("#loginNormal").hidden=false; $("#loginSetup").hidden=true; $("#loginMsg").textContent=e.message; }
+}
+$("#btnSair").onclick=sair;
+$("#quem").onclick=()=>{ if(window.FlexAdmin) window.FlexAdmin.trocarSenha(); };
+$("#frmLogin").addEventListener("submit",async e=>{
+  e.preventDefault(); const m=$("#loginMsg"); m.textContent="Entrando…";
+  try{
+    const j=await api("/api/login",{method:"POST",body:JSON.stringify({email:$("#emailLogin").value.trim(),senha:$("#senha").value})});
+    guardarSessao(j); $("#senha").value=""; m.textContent=""; irInicio();
+  }catch(err){ m.textContent=err.message||"Não foi possível entrar."; }
+});
+$("#frmSetup").addEventListener("submit",async e=>{
+  e.preventDefault(); const m=$("#setupMsg");
+  if($("#stSenha").value!==$("#stSenha2").value){ m.textContent="As duas senhas não são iguais."; return; }
+  m.textContent="Criando…";
+  try{
+    const j=await api("/api/setup",{method:"POST",body:JSON.stringify({chave:$("#stChave").value,nome:$("#stNome").value.trim(),email:$("#stEmail").value.trim(),senha:$("#stSenha").value})});
+    guardarSessao(j); m.textContent=""; toast("Administrador criado. Bem-vindo!"); irInicio();
+  }catch(err){ m.textContent=err.message||"Não foi possível criar."; }
+});
+window.FlexApp={ api, esc, toast, money, brl, get usuario(){return usuario}, go, abrirProposta:async id=>{ try{ carregar(await store.get(id)); go("preview"); }catch(e){ toast(e.message) } } };
+
+/* ---------- app instalado (PWA) ---------- */
+if("serviceWorker" in navigator){ window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{})); }
+let pedidoInstalar=null;
+window.addEventListener("beforeinstallprompt",e=>{ e.preventDefault(); pedidoInstalar=e; $("#btnInstalar").hidden=false; });
+$("#btnInstalar").onclick=async()=>{ if(!pedidoInstalar) return; pedidoInstalar.prompt(); const r=await pedidoInstalar.userChoice.catch(()=>({})); if(r&&r.outcome==="accepted") toast("App instalado"); pedidoInstalar=null; $("#btnInstalar").hidden=true; };
+window.addEventListener("appinstalled",()=>{ $("#btnInstalar").hidden=true; });
+const instalado=window.matchMedia("(display-mode: standalone)").matches||window.navigator.standalone===true;
+const ios=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);
+try{ if(ios&&!instalado&&!localStorage.getItem("flexsolar-iosdica")) $("#iosDica").hidden=false; }catch(e){}
+$("#iosDicaX").onclick=()=>{ $("#iosDica").hidden=true; try{localStorage.setItem("flexsolar-iosdica","1")}catch(e){} };
+const marcaConexao=()=>{ $("#offline").hidden=navigator.onLine; };
+window.addEventListener("online",()=>{ marcaConexao(); toast("Conexão restabelecida"); }); window.addEventListener("offline",marcaConexao); marcaConexao();
+// atalhos do ícone do app (pressionar o ícone): entrada, saída, O.S.
+function abrirAtalho(){
+  const a=new URLSearchParams(location.search).get("atalho"); if(!a||!usuario) return;
+  history.replaceState(null,"",location.pathname);
+  const esperar=f=>{ if(window.FlexOp) f(); else setTimeout(()=>esperar(f),150); };
+  if(a==="os") go("os");
+  if((a==="entrada"||a==="saida")&&["admin","almoxarife"].includes(usuario.perfil)) { go("estoque"); esperar(()=>setTimeout(()=>document.getElementById(a==="entrada"?"estEntLeit":"estSaiLeit")?.click(),400)); }
+}
+
+(async()=>{
+  if(!API){ go("login"); $("#loginMsg").textContent="Configure a API_URL no arquivo config.js."; return; }
+  if(!token) return telaLogin();
+  try{ usuario=await api("/api/me"); try{localStorage.setItem(UK,JSON.stringify(usuario))}catch(e){} mostrarQuem(); irInicio(); abrirAtalho(); }
+  catch(e){ if(e.code!=="auth") { mostrarQuem(); irInicio(); } }
+})();
+})();
+</script>
 </body>
 </html>
