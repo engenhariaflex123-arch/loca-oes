@@ -109,7 +109,7 @@ async function saveItems(db, rentalId, items, startDate, endDate, billing = 'dia
 router.get('/', async (req, res) => {
   const conds = [], params = [];
   if(req.query.status){ params.push(req.query.status.split(',')); conds.push(`r.status = ANY($${params.length})`); }
-  if(req.query.from){ params.push(req.query.from); conds.push(`r.end_date >= $${params.length}`); }
+  if(req.query.from){ params.push(req.query.from); conds.push(`COALESCE(r.end_date, DATE '9999-12-31') >= $${params.length}`); }
   if(req.query.to){ params.push(req.query.to); conds.push(`r.start_date <= $${params.length}`); }
   if(req.query.clientId){ params.push(req.query.clientId); conds.push(`r.client_id = $${params.length}`); }
   const { rows } = await pool.query(

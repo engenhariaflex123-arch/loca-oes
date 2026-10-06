@@ -1134,12 +1134,23 @@ const OS_FILTERS = [
   { id: 'cancelado', label: 'Canceladas', status: 'cancelado' },
 ];
 
+function monthRange(offset){
+  const now = new Date(new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date()) + 'T12:00:00Z');
+  const first = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
+  const last = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset + 1, 0));
+  return [first.toISOString().slice(0, 10), last.toISOString().slice(0, 10)];
+}
+
 export function OrdensTab({ initialOs, onOsOpened }){
   const [filter, setFilter] = useState('todas');
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(null);
+  // Filtro por período: "locacao" = O.S. com a locação ativa em algum dia do intervalo; "criacao" = criadas no intervalo
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [basis, setBasis] = useState('locacao');
 
   useEffect(() => {
     setRows(null);
@@ -1153,8 +1164,17 @@ export function OrdensTab({ initialOs, onOsOpened }){
   }, [initialOs]);
 
   const q = search.trim().toLowerCase();
+  const dayBR = (iso) => iso ? new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(iso)) : '';
+  const inPeriod = (r) => {
+    if(!from && !to) return true;
+    const a = from || '0000-01-01', b = to || '9999-12-31';
+    if(basis === 'criacao'){ const d = dayBR(r.createdAt); return d >= a && d <= b; }
+    // locação sem data de término (mensal por prazo indeterminado) continua ativa
+    return r.startDate <= b && (r.endDate || '9999-12-31') >= a;
+  };
   const list = (rows || [])
     .filter(r => !q || `${r.osCode || ''} ${r.clientName} ${r.siteName || ''} ${itemsSummary(r.items)}`.toLowerCase().includes(q))
+    .filter(inPeriod)
     .sort((a, b) => (b.osCode || '').localeCompare(a.osCode || '', 'pt-BR', { numeric: true }));
 
   return (
@@ -1169,18 +1189,53 @@ export function OrdensTab({ initialOs, onOsOpened }){
               {f.label}
             </button>
           ))}
+          <div className="flex items-center gap-1.5 ml-1 pl-2 border-l border-neutral-300 dark:border-neutral-700 whitespace-nowrap">
+            <span className="text-xs font-mono text-neutral-500">Período</span>
+            <input type="date" aria-label="De" value={from} max={to || undefined} onChange={e => setFrom(e.target.value)}
+              className="text-xs px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900" />
+            <span className="text-xs text-neutral-500">até</span>
+            <input type="date" aria-label="Até" value={to} min={from || undefined} onChange={e => setTo(e.target.value)}
+              className="text-xs px-2 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900" />
+            <select aria-label="Atalhos de período" value="" onChange={e => {
+                const v = e.target.value;
+                if(v === 'mes') { const [a, b] = monthRange(0); setFrom(a); setTo(b); }
+                if(v === 'passado') { const [a, b] = monthRange(-1); setFrom(a); setTo(b); }
+                if(v === 'proximo') { const [a, b] = monthRange(1); setFrom(a); setTo(b); }
+              }}
+              className="text-xs px-1.5 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-300">
+              <option value="">Atalhos…</option>
+              <option value="mes">Este mês</option>
+              <option value="passado">Mês passado</option>
+              <option value="proximo">Próximo mês</option>
+            </select>
+            <select aria-label="Considerar" value={basis} onChange={e => setBasis(e.target.value)}
+              className="text-xs px-1.5 py-1 rounded border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-300"
+              title="Período da locação: O.S. com a locação ativa em algum dia do intervalo. Data de criação: O.S. abertas no intervalo.">
+              <option value="locacao">pela locação</option>
+              <option value="criacao">pela criação</option>
+            </select>
+            {(from || to) && (
+              <button onClick={() => { setFrom(''); setTo(''); }} aria-label="Limpar período" title="Limpar período"
+                className="p-1 rounded text-neutral-500 hover:text-red-500"><X size={14}/></button>
+            )}
+          </div>
         </div>
-        <div className="relative w-full sm:w-80">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"/>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar O.S., cliente, local..."
-            className="w-full bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-lg pl-9 pr-3 py-2 text-sm" />
-        </div>
+      </div>
+      <div className="relative w-full">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400"/>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar O.S., cliente, local..."
+          className="w-full bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-lg pl-9 pr-3 py-2.5 text-sm" />
       </div>
 
       {error && <p className="text-sm text-red-500">{error}</p>}
+      {rows && (from || to) && (
+        <p className="text-xs text-neutral-500 -mb-2">
+          {list.length} O.S. {basis === 'criacao' ? 'criada(s)' : 'com locação ativa'}{from ? ` de ${fmtDate(from)}` : ''}{to ? ` até ${fmtDate(to)}` : ''}
+        </p>
+      )}
       <div className={`${ui.card} overflow-x-auto`}>
         {!rows && !error && <p className="p-4 text-sm text-neutral-500 font-mono">Carregando...</p>}
-        {rows && list.length === 0 && <p className="p-4 text-sm text-neutral-500">Nenhuma O.S. encontrada.</p>}
+        {rows && list.length === 0 && <p className="p-4 text-sm text-neutral-500">Nenhuma O.S. encontrada{from || to ? ' nesse período' : ''}.</p>}
         {list.length > 0 && (
           <table className="w-full text-sm">
             <thead>
